@@ -3,6 +3,7 @@
   "forbiddenCommands": [
     "cd",
     "chmod",
+    "chown",
     "rm",
     "rm -rf",
     "format",
