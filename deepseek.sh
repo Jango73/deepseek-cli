@@ -1,11 +1,20 @@
 #!/bin/bash
 set -e
 
-# Path to the dashboard script
-SCRIPT_FILE="deepseek.mjs"
+# Get the absolute path of the script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Path to the dashboard script (relative to script directory)
+SCRIPT_FILE="$SCRIPT_DIR/deepseek.mjs"
 
 # Required dependencies
 DEPS=()
+
+# Store the ORIGINAL working directory
+ORIGINAL_DIR="$(pwd)"
+
+# Change to script directory ONLY for npm operations
+cd "$SCRIPT_DIR"
 
 # Initialize npm project if missing
 if [ ! -f package.json ]; then
@@ -21,11 +30,11 @@ for dep in "${DEPS[@]}"; do
     fi
 done
 
-# Run the dashboard
+# Run the CLI
 if [ ! -f "$SCRIPT_FILE" ]; then
     echo "[error] Script '$SCRIPT_FILE' not found."
     exit 1
 fi
 
-echo "[run] Starting deepseek CLI..."
-exec node "$SCRIPT_FILE" sk-xxxxxxxxxxxxxxxx
+echo "[run] Starting deepseek CLI from: $ORIGINAL_DIR"
+exec node "$SCRIPT_FILE" "$ORIGINAL_DIR"

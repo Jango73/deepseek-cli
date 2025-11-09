@@ -1,5 +1,5 @@
-// .deepseek_config.json
 {
+  "apiKey": "sk-xxxxxxxxxxxxxxxxxxxxxxxxx",
   "forbiddenCommands": [
     "cd",
     "chmod",

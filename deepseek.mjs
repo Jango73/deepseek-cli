@@ -5,22 +5,62 @@ import fs from 'fs';
 import readline from 'readline';
 
 class DeepSeekCLI {
-  constructor(apiKey) {
-    this.apiKey = apiKey;
+  constructor(apiKey, workingDir) {
+    this.scriptDirectory = process.cwd();
+    this.workingDirectory = workingDir;
+    this.configFile = `${this.scriptDirectory}/.deepseek_config.json`;
+    this.sessionFile = `${this.workingDirectory}/.deepseek_session.json`;
+    
+    // Load configuration
+    const config = this.loadConfig();
+    
+    // Use provided API key or fallback to config
+    // Check for truthy value (not undefined, null, or empty string)
+    if (apiKey) {
+      this.apiKey = apiKey;
+    } else if (config.apiKey) {
+      this.apiKey = config.apiKey;
+    } else {
+      process.exit(1);
+    }
+    
     this.conversationHistory = [];
     this.fullHistory = [];
     this.alwaysYes = false;
-    this.sessionFile = '.deepseek_session.json';
-    this.configFile = '.deepseek_config.json';
-    this.forbiddenCommands = this.loadForbiddenCommands();
+    this.forbiddenCommands = this.loadForbiddenCommands(config.forbiddenCommands);
+    
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
     });
+    
     this.loadSession();
   }
 
-  loadForbiddenCommands() {
+  loadConfig() {
+    const config = {
+      apiKey: null,
+      forbiddenCommands: []
+    };
+    
+    try {
+      if (fs.existsSync(this.configFile)) {
+        const fileContent = fs.readFileSync(this.configFile, 'utf8');
+        const fileConfig = JSON.parse(fileContent);
+        
+        config.apiKey = fileConfig.apiKey || null;
+        config.forbiddenCommands = fileConfig.forbiddenCommands || [];
+      } else {
+        console.log('⚠️ Config file does not exist!');
+      }
+    } catch (error) {
+      console.log('⚠️  Config file error:', error.message);
+    }
+    
+    return config;
+  }
+
+  loadForbiddenCommands(configForbiddenCommands = []) {
     const defaultForbidden = [
       'rm -rf /', 'rm -rf /*', 'rm -rf .', 'rm -rf *',
       'dd if=/dev/random', 'mkfs', 'fdisk', ':(){ :|:& };:',
@@ -28,16 +68,7 @@ class DeepSeekCLI {
       '> /dev/sda', 'dd if=/dev/zero'
     ];
     
-    try {
-      if (fs.existsSync(this.configFile)) {
-        const config = JSON.parse(fs.readFileSync(this.configFile, 'utf8'));
-        return [...defaultForbidden, ...(config.forbiddenCommands || [])];
-      }
-    } catch (error) {
-      console.log('⚠️  Using default forbidden commands');
-    }
-    
-    return defaultForbidden;
+    return [...defaultForbidden, ...configForbiddenCommands];
   }
 
   isCommandForbidden(command) {
@@ -112,12 +143,14 @@ class DeepSeekCLI {
   }
 
   async askDeepSeek(prompt) {
-    // Read AGENTS.md only at the beginning of a session
+    // Read AGENTS.md from the working directory only at the beginning of a session
     let agentsContent = '';
     if (this.conversationHistory.length === 0) {
       try {
-        if (fs.existsSync('AGENTS.md')) {
-          agentsContent = fs.readFileSync('AGENTS.md', 'utf8');
+        // Use the project working directory, not the CLI directory
+        const agentsPath = `${this.workingDirectory}/AGENTS.md`;
+        if (fs.existsSync(agentsPath)) {
+          agentsContent = fs.readFileSync(agentsPath, 'utf8');
           console.log('📖 Loaded AGENTS.md');
         }
       } catch (error) {
@@ -137,8 +170,9 @@ IMPORTANT RULES:
 3. Only one command per response
 4. Commands must be specific and actionable
 5. If you need to wait for the user to execute something before continuing, yield a "pause" command
+6. If the user's input has nothing to do with the codebase, all above rules DO NOT apply
 
-Current directory: ${process.cwd()}`;
+Current directory: ${this.workingDirectory}`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -209,6 +243,17 @@ Current directory: ${process.cwd()}`;
         return;
       }
       
+      // Handle pure comments (no actual command)
+      if (!cleanCommand && comment) {
+        console.log(`💬 ${comment}`);
+        resolve({ 
+          success: true, 
+          output: `COMMENT: ${comment}`,
+          comment: true
+        });
+        return;
+      }
+      
       if (!cleanCommand) {
         resolve({ 
           success: false, 
@@ -228,12 +273,11 @@ Current directory: ${process.cwd()}`;
         return;
       }
 
-      console.log(`💻 Running: ${cleanCommand}`);
       if (comment) {
         console.log(`💬 Note: ${comment}`);
       }
 
-      exec(cleanCommand, { timeout: 60000 }, (error, stdout, stderr) => {
+      exec(cleanCommand, { timeout: 60000, cwd: this.workingDirectory }, (error, stdout, stderr) => {
         const output = stdout + stderr;
         const success = error === null;
 
@@ -287,8 +331,9 @@ Current directory: ${process.cwd()}`;
 
   async startInteractiveSession() {
     console.log('🔧 DeepSeek CLI - Kernel Debug Mode');
-    console.log('====================================\n');
-    console.log('Press Ctrl+C at any time to interrupt current task\n');
+    console.log('====================================');
+    console.log(`📁 Working directory: ${this.workingDirectory}`);
+    console.log('Press Ctrl+C at any time to interrupt current task');
 
     while (true) {
       try {
@@ -358,11 +403,25 @@ Press Ctrl+C to interrupt any operation
             if (interrupted) break;
 
             const response = await this.askDeepSeek(currentPrompt);
-            console.log(`💡 DeepSeek: ${this.truncateOutput(response)}`);
 
             // Extract the actual command (first line usually)
-            const command = response.split('\n')[0].trim();
             
+            // Check if it's a pure comment BEFORE displaying
+            const command = response.split('\n')[0].trim();
+
+            // Check if it's a pure comment (starts with #)
+            if (command.startsWith('#')) {
+              // Pure comment - display only once and continue
+              const comment = command.substring(1).trim();
+              console.log(`💬 ${comment}`);
+              currentPrompt = 'Comment noted. Continue with next command.';
+              iteration++;
+              continue;
+            }
+            
+            // Not a pure comment - display DeepSeek response and process normally
+            console.log(`💡 DeepSeek: ${this.truncateOutput(response)}`);
+
             if (!command || command.length < 2) {
               console.log('❌ No valid command found');
               currentPrompt = 'Give me a valid shell command to execute';
@@ -416,6 +475,13 @@ Press Ctrl+C to interrupt any operation
               continue;
             }
 
+            if (result.comment) {
+              // Pure comment from AI - just continue to next command
+              currentPrompt = 'Comment noted. Continue with next command.';
+              iteration++;
+              continue;
+            }
+
             if (result.output) {
               console.log(`📋 Output:\n${this.truncateOutput(result.output)}`);
             }
@@ -456,14 +522,16 @@ Press Ctrl+C to interrupt any operation
 
 // Main
 const main = async () => {
-  const apiKey = process.argv[2];
+  // Arguments: [node, script, workingDir, apiKey]
+  const workingDir = process.argv[2];
+  const apiKey = process.argv[3];
 
-  if (!apiKey) {
-    console.log('Usage: ./deepseek.mjs API_KEY');
+  if (!workingDir) {
+    console.log('Missing working directory');
     process.exit(1);
   }
 
-  const cli = new DeepSeekCLI(apiKey);
+  const cli = new DeepSeekCLI(apiKey, workingDir);
   await cli.startInteractiveSession();
 };
 

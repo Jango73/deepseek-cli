@@ -1,0 +1,11 @@
+{
+  "name": "deepseek-cli",
+  "version": "1.0.0",
+  "description": "## TL;DR",
+  "keywords": [],
+  "author": "Jango73",
+  "license": "ISC",
+  "dependencies": {
+    "blessed": "^0.1.81"
+  }
+}
