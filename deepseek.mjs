@@ -32,7 +32,7 @@ class DeepSeekCLI {
     this.isInterrupted = false;
 
     // Configuration for conversation size management
-    this.maxConversationLength = 80; // Maximum messages before warning
+    this.maxConversationLength = 90; // Maximum messages before warning
     this.criticalConversationLength = 100; // Critical size where compaction is strongly recommended    
     this.rl = readline.createInterface({
       input: process.stdin,
@@ -174,13 +174,10 @@ class DeepSeekCLI {
 
     if (currentSize >= this.criticalConversationLength) {
       console.log('🚨 CRITICAL: Conversation is very long! Auto-compacting...');
-      console.log(`📊 Current size: ${currentSize} messages`);
       this.compactConversation();
       return 'critical';
     } else if (currentSize >= this.maxConversationLength) {
-      console.log('⚠️ WARNING: Conversation is getting long');
-      console.log(`📊 Current size: ${currentSize} messages`);
-      console.log('💡 Will auto-compact at ' + this.criticalConversationLength + ' messages');
+      console.log(`⚠️ WARNING: Conversation is getting long (${currentSize} messages), Will auto-compact at ${this.criticalConversationLength}`);
       return 'warning';
     }
 
@@ -205,7 +202,6 @@ class DeepSeekCLI {
     this.conversationHistory = [...firstMessages, ...lastMessages];
 
     console.log(`✅ Conversation compacted: ${totalMessages} → ${this.conversationHistory.length} messages`);
-    console.log('💡 First 4 and last 6 messages have been preserved');
 
     this.saveSession();
     return true;
@@ -318,7 +314,8 @@ IMPORTANT RULES:
 4. No markdown, no code blocks
 5. DO NOT repeat a command that just failed
 6. NEVER launch a tail command with no timeout, this can lead to infinite waits
-7. If you need to wait for the user to execute something before continuing, yield a "pause" command
+7. NEVER use interactive tools
+8. If you need to wait for the user to execute something before continuing, yield a "pause" command
 
 Current directory: ${this.workingDirectory}`;
 
@@ -717,7 +714,6 @@ Interruption:
         }
 
         // Regular task execution
-        console.log(`🔄 Task: ${userPrompt}`);
         await this.executeTaskLoop(userPrompt);
 
       } catch (error) {
