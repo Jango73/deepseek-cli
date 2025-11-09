@@ -1,0 +1,14 @@
+// .deepseek_config.json
+{
+  "forbiddenCommands": [
+    "cd",
+    "chmod",
+    "rm",
+    "rm -rf",
+    "format",
+    "shutdown",
+    "shutdown",
+    "reboot",
+    "> important_file.txt"
+  ]
+}
