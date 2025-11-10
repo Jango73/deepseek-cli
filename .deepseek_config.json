@@ -6,10 +6,12 @@
     "chown",
     "rm",
     "rm -rf",
+    "tail -f",
     "format",
     "shutdown",
     "shutdown",
     "reboot",
+    "make",
     "> important_file.txt"
   ]
 }

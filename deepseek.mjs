@@ -43,6 +43,173 @@ class DeepSeekCLI {
     this.setupKeypressListener();
   }
 
+  // Centralized API configuration
+  getApiConfig() {
+    return {
+      url: 'https://api.deepseek.com/chat/completions',
+      model: 'deepseek-coder',
+      maxTokens: 1000,
+      temperature: 0.1,
+      timeout: 30000
+    };
+  }
+
+  // Centralized method for API requests
+  async makeApiRequest(messages, systemPrompt = null) {
+    const apiConfig = this.getApiConfig();
+    
+    // Prepare messages with system prompt if provided
+    const finalMessages = systemPrompt 
+      ? [{ role: 'system', content: systemPrompt }, ...messages]
+      : messages;
+
+    // Check interruption before API request
+    if (this.isInterrupted) {
+      throw new Error('INTERRUPTED_BY_USER');
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), apiConfig.timeout);
+    
+    try {
+      const response = await fetch(apiConfig.url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: apiConfig.model,
+          messages: finalMessages,
+          max_tokens: apiConfig.maxTokens,
+          temperature: apiConfig.temperature
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      // Check interruption after API request
+      if (this.isInterrupted) {
+        throw new Error('INTERRUPTED_BY_USER');
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(`API Error: ${data.error.message}`);
+      }
+      
+      if (!data.choices || !data.choices[0]) {
+        throw new Error('Invalid response format from API');
+      }
+      
+      return data.choices[0].message.content;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        console.error('❌ API request timeout');
+      } else if (error.message === 'INTERRUPTED_BY_USER') {
+        throw error; // Propagate interruption
+      } else {
+        console.error('❌ API call failed:', error.message);
+      }
+      throw error;
+    }
+  }
+
+  // AI-powered conversation compaction
+  async compactConversationWithAI() {
+    const totalMessages = this.conversationHistory.length;
+
+    if (totalMessages <= 10) {
+      console.log('ℹ️ Conversation already has less than 10 messages, no compaction needed');
+      return false;
+    }
+
+    console.log(`⚙️ Compacting conversation (${totalMessages} messages)...`);
+
+    // 1. Combine all conversation into a single string
+    const fullConversation = this.conversationHistory.map(msg => 
+      `${msg.role.toUpperCase()}:\n${msg.content}`
+    ).join('\n\n');
+
+    // 2. Ask AI to reduce the text
+    const compactionPrompt = `
+Here is the complete history of a conversation between an AI assistant and a user.
+Compact this conversation while keeping only the most relevant information.
+Reduce the size to about 20% of the original while preserving:
+1. The general context and main objective
+2. Important decisions made
+3. Problems encountered and their solutions
+4. Current project state
+5. Key commands executed
+
+Keep the conversation structure (USER/ASSISTANT roles) but merge similar messages.
+The compacted version should allow continuing the conversation without losing context.
+
+Conversation to compact:
+${fullConversation}
+`;
+
+    try {
+      const compactedText = await this.makeApiRequest(
+        [{ role: 'user', content: compactionPrompt }],
+        `You are a conversation synthesis expert.
+        Your task is to reduce a long conversation to its essence (20% of original size)
+        while keeping all important information to maintain continuity.
+        Return ONLY the compacted text, without additional comments.`
+      );
+
+      // 3. Rebuild conversation with the response
+      // Keep first messages (system context) and add summary
+      const firstMessages = this.conversationHistory.slice(0, 2); // Keep system prompt
+      const summaryMessage = {
+        role: 'system',
+        content: `CONVERSATION SUMMARY (${totalMessages} messages compacted):\n${compactedText}`
+      };
+
+      // Also keep recent messages for immediate continuity
+      const lastMessages = this.conversationHistory.slice(-4);
+
+      this.conversationHistory = [...firstMessages, summaryMessage, ...lastMessages];
+
+      console.log(`✅ Compacted conversation: ${totalMessages} → ${this.conversationHistory.length} messages`);
+      this.saveSession();
+      return true;
+
+    } catch (error) {
+      console.log('❌ AI compaction failed, using fallback method');
+      return this.compactConversationFallback();
+    }
+  }
+
+  // Fallback method if AI fails
+  compactConversationFallback() {
+    const totalMessages = this.conversationHistory.length;
+
+    if (totalMessages <= 10) {
+      return false;
+    }
+
+    // Keep first 4 messages (system + beginning of conversation)
+    const firstMessages = this.conversationHistory.slice(0, 4);
+
+    // Keep last 6 messages
+    const lastMessages = this.conversationHistory.slice(-6);
+
+    // New compacted history
+    this.conversationHistory = [...firstMessages, ...lastMessages];
+
+    console.log(`✅ Conversation compacted (fallback): ${totalMessages} → ${this.conversationHistory.length} messages`);
+    this.saveSession();
+    return true;
+  }
+
   setupKeypressListener() {
     // Raw mode to capture individual keys
     if (process.stdin.isTTY) {
@@ -173,38 +340,12 @@ class DeepSeekCLI {
     const currentSize = this.conversationHistory.length;
 
     if (currentSize >= this.criticalConversationLength) {
-      console.log('🚨 CRITICAL: Conversation is very long! Auto-compacting...');
-      this.compactConversation();
-      return 'critical';
+      return "needs_compact";
     } else if (currentSize >= this.maxConversationLength) {
-      console.log(`⚠️ WARNING: Conversation is getting long (${currentSize} messages), Will auto-compact at ${this.criticalConversationLength}`);
       return 'warning';
     }
 
     return 'normal';
-  }
-
-  compactConversation() {
-    const totalMessages = this.conversationHistory.length;
-
-    if (totalMessages <= 10) {
-      console.log('ℹ️ Conversation already has less than 10 messages, no compaction needed');
-      return false;
-    }
-
-    // Keep first 4 messages (system + beginning of conversation)
-    const firstMessages = this.conversationHistory.slice(0, 4);
-
-    // Keep last 6 messages
-    const lastMessages = this.conversationHistory.slice(-6);
-
-    // New compacted history
-    this.conversationHistory = [...firstMessages, ...lastMessages];
-
-    console.log(`✅ Conversation compacted: ${totalMessages} → ${this.conversationHistory.length} messages`);
-
-    this.saveSession();
-    return true;
   }
 
   truncateOutput(text, maxLines = 4) {
@@ -270,12 +411,7 @@ class DeepSeekCLI {
   }
 
   async askDeepSeek(prompt) {
-    // Check conversation size before API call
-    const sizeStatus = this.checkConversationSize();
-    if (sizeStatus === 'critical') {
-      console.log('⏸️ API call pending - conversation too long');
-    }
-
+    // Check interruption before starting
     // Check interruption before starting
     if (this.isInterrupted) {
       throw new Error('INTERRUPTED_BY_USER');
@@ -297,80 +433,34 @@ class DeepSeekCLI {
     }
 
     const systemPrompt = `
-You have access to the user's full codebase.
-Your commands will run in a Linux shell.
+You are a coding guru working on a task.
+You have access to a full codebase.
+Your commands run in a Linux shell.
 ${agentsContent ? `\nProject-specific context from AGENTS.md:\n${agentsContent}\n` : ''}
 
-EDITING BEST PRACTICES:
-- For simple edits: use sed with single-line commands
-- For complex multi-line edits: create a patch file or use a proper editor
-- Test your sed commands mentally before using them
-- Prefer simple and robust approaches over clever one-liners
-    
 IMPORTANT RULES:
-1. You may respond with EITHER a valid shell command that can be executed immediately OR a comment starting with #
-2. Only one command per response, and the comment ALWAYS last
-3. Commands must be specific and actionable
-4. No markdown, no code blocks
-5. DO NOT repeat a command that just failed
-6. NEVER launch a tail command with no timeout, this can lead to infinite waits
-7. NEVER use interactive tools
-8. If you need to wait for the user to execute something before continuing, yield a "pause" command
+1. You may respond with EITHER a valid shell command that can be executed immediately OR a comment starting with '#'.
+2. ONLY ONE command per response, and the comment is ALWAYS FOLLOWING the command.
+3. Commands must be specific and actionable.
+4. PREFER awk for file edition, but remove your awk scripts after use.
+5. PREFER simple and robust approaches over clever one-liners.
+6. TEST your awk/grep/sed commands mentally before using them.
+7. If an edit command fails 2 times, check if the file is empty, and if it is, RESTORE it.
+8. DO NOT repeat a command that just failed.
+9. NEVER EVER launch a tail command with -f : this can lead to infinite waits.
+10. NEVER EVER use interactive tools.
+11. NEVER use make directly or any executable to build or run the project. Find and use USER scripts.
+12. If you need to wait for the user to execute something before continuing, yield a "pause" command.
 
 Current directory: ${this.workingDirectory}`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
       ...this.conversationHistory,
       { role: 'user', content: prompt }
     ];
 
     try {
-      // Check interruption before API request
-      if (this.isInterrupted) {
-        throw new Error('INTERRUPTED_BY_USER');
-      }
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-      
-      const response = await fetch('https://api.deepseek.com/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'deepseek-coder',
-          messages: messages,
-          max_tokens: 1000,
-          temperature: 0.1
-        }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      // Check interruption after API request
-      if (this.isInterrupted) {
-        throw new Error('INTERRUPTED_BY_USER');
-      }
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(`API Error: ${data.error.message}`);
-      }
-      
-      if (!data.choices || !data.choices[0]) {
-        throw new Error('Invalid response format from API');
-      }
-      
-      const result = data.choices[0].message.content;
+      const result = await this.makeApiRequest(messages, systemPrompt);
 
       this.conversationHistory.push({ role: 'user', content: prompt });
       this.conversationHistory.push({ role: 'assistant', content: result });
@@ -378,13 +468,6 @@ Current directory: ${this.workingDirectory}`;
 
       return result;
     } catch (error) {
-      if (error.name === 'AbortError') {
-        console.error('❌ API request timeout');
-      } else if (error.message === 'INTERRUPTED_BY_USER') {
-        throw error; // Propagate interruption
-      } else {
-        console.error('❌ API call failed:', error.message);
-      }
       throw error;
     }
   }
@@ -477,12 +560,34 @@ Current directory: ${this.workingDirectory}`;
     let currentPrompt = initialPrompt;
     let iteration = 1;
     let shouldBreak = false;
+    let needsCompaction = false;
+    
+    // Check initial conversation size
+    const initialSizeStatus = this.checkConversationSize();
+    if (initialSizeStatus === "needs_compact") {
+      needsCompaction = true;
+    }
 
-    while (iteration <= maxIterations && !shouldBreak && !this.isInterrupted) {
-      console.log(`\n┌─── Step ${iteration} ─${'─'.repeat(Math.max(0, 8 - String(iteration).length))}┐`);
-
+      while (iteration <= maxIterations && !shouldBreak && !this.isInterrupted) {
+        // Check if compaction is needed
+        if (needsCompaction) {
+          try {
+            await this.compactConversationWithAI();
+            needsCompaction = false;
+          } catch (error) {
+            needsCompaction = false;
+          }
+        }
       try {
+        console.log("");
+
         const response = await this.askDeepSeek(currentPrompt);
+
+        // Check conversation size after API response
+        const sizeStatusAfterAPI = this.checkConversationSize();
+        if (sizeStatusAfterAPI === "needs_compact") {
+          needsCompaction = true;
+        }
 
         // Check interruption after API call
         if (this.isInterrupted) {
@@ -491,23 +596,25 @@ Current directory: ${this.workingDirectory}`;
           break;
         }
 
-        // Parse AI response intelligently
+        // Parse AI response
         const parsedResponse = this.parseAIResponse(response);
 
         if (parsedResponse.type === 'comment') {
-          // Pure comment - display with comment icon only
-          console.log(`💬 ${parsedResponse.content}`);
-          currentPrompt = 'Comment noted. Continue with next command.';
+          // Pure comment
+          const cleanedContent = parsedResponse.content.replace(/^#\s*/, '').trimStart();
+          console.log(`💬 ${cleanedContent}`);
+          currentPrompt = "Comment noted. Continue with next command.";
           iteration++;
           continue;
         } else {
-          // Command response - show with lightbulb only
-          console.log(`💡 ${this.truncateOutput(parsedResponse.fullResponse)}`);
+          // Command response
+          const cleanedContent = parsedResponse.fullResponse.replace(/^#\s*/, '').trimStart();
+          console.log(`💬 ${this.truncateOutput(cleanedContent)}`);
         }
 
         if (!parsedResponse.command || parsedResponse.command.length < 2) {
           console.log('❌ No valid command found');
-          currentPrompt = 'Give me a valid shell command to execute';
+          currentPrompt = "Give me a valid shell command to execute";
           iteration++;
           continue;
         }
@@ -526,7 +633,7 @@ Current directory: ${this.workingDirectory}`;
           // Pause requested by AI - wait for user confirmation
           console.log('⏸️ AI is waiting for you to complete an action');
           const userInput = await new Promise((resolve) => {
-            this.rl.question('✅ Press Enter when ready to continue, or type new instruction > ', resolve);
+            this.rl.question('> ', resolve);
           });
           
           if (userInput.trim()) {
@@ -534,15 +641,11 @@ Current directory: ${this.workingDirectory}`;
             currentPrompt = userInput;
           } else {
             // User just pressed Enter - continue with next command
-            currentPrompt = 'Action completed. Continue with next command.';
+            currentPrompt = "Action completed. Continue with next command.";
           }
           
           iteration++;
           continue;
-        }
-
-        if (result.output) {
-          console.log(`📋 Output:\n${this.truncateOutput(result.output)}`);
         }
 
         if (result.error) {
@@ -558,6 +661,12 @@ Current directory: ${this.workingDirectory}`;
         });
 
         currentPrompt = this.createSummaryPrompt(parsedResponse.command, result.success, result.output, result.error);
+
+        // Check conversation size after command execution
+        const sizeStatusAfterCmd = this.checkConversationSize();
+        if (sizeStatusAfterCmd === "needs_compact") {
+          needsCompaction = true;
+        }
         iteration++;
 
       } catch (error) {
@@ -629,7 +738,7 @@ Commands:
 - <task> : Execute debugging task
 - /continue : Continue from last session
 - /clear : Clear history
-- /compact : Reduce conversation to last 10 messages
+- /compact : Reduce conversation using AI
 - /help : Show this help
 - /quit | /exit : Quit
 - /forbidden : Show forbidden commands
@@ -661,17 +770,14 @@ Interruption:
         }
 
         if (userPrompt.toLowerCase() === '/compact') {
-          this.compactConversation();
+          await this.compactConversationWithAI();
           continue;
         }
 
         if (userPrompt.toLowerCase() === '/status') {
           this.showSessionStatus();
           // Also show conversation size
-          const sizeStatus = this.checkConversationSize();
-          if (sizeStatus === 'normal') {
-            console.log(`📊 Conversation size: ${this.conversationHistory.length} messages (OK)`);
-          }
+          this.checkConversationSize();
           continue;
         }
 
