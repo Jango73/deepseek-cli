@@ -186,15 +186,22 @@ Interruption:
     console.log('🆕 New session ready');
   }
 
-  handleClearAll() {
+  async handleClearAll() {
     this.removeKeypressListener();
-    this.rl.question('⚠️  Are you sure you want to delete ALL sessions and archives? (yes/no): ', (answer) => {
-      this.setupKeypressListener();
-      if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
-        this.sessionManager.clearAllSessions();
-      } else {
-        console.log('❌ Operation cancelled');
-      }
+    
+    return new Promise((resolve) => {
+      this.rl.question('⚠️  Are you sure you want to delete ALL sessions and archives? (yes/no): ', (answer) => {
+        this.setupKeypressListener();
+        
+        if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
+          this.sessionManager.clearAllSessions();
+          console.log('✅ All sessions and archives deleted');
+        } else {
+          console.log('❌ Operation cancelled');
+        }
+        
+        resolve();
+      });
     });
   }
 
@@ -278,7 +285,7 @@ Interruption:
             continue;
 
           case '/clear-all':
-            this.handleClearAll();
+            await this.handleClearAll();
             continue;
 
           case '/help':
