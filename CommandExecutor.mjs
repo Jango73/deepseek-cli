@@ -1,4 +1,4 @@
-import { exec } from 'child_process';
+import { exec, execFile } from "child_process";
 
 export class CommandExecutor {
   constructor(workingDirectory, forbiddenCommands) {
@@ -45,7 +45,9 @@ export class CommandExecutor {
         return;
       }
 
-      const childProcess = exec(trimmedCommand, { timeout: 60000, cwd: this.workingDirectory }, (error, stdout, stderr) => {
+        // SECURITY FIX: Use execFile to prevent command injection
+        const args = ["-c", trimmedCommand];
+        const childProcess = execFile("/bin/sh", args, { timeout: 60000, cwd: this.workingDirectory }, (error, stdout, stderr) => {
         this.currentExecution = null;
         
         const output = stdout + stderr;
@@ -76,59 +78,43 @@ export class CommandExecutor {
   parseAIResponse(response) {
     const lines = response.split('\n').map(line => line.trim());
     
-    // Check if the entire response is a comment (all lines start with # or are empty)
-    const isPureComment = lines.length > 0 && 
-                         lines.every(line => line.startsWith('#') || line === '');
-    
-    if (isPureComment) {
-      return {
-        type: 'comment',
-        content: lines.map(line => line.startsWith('#') ? line.substring(1).trim() : line)
-                     .filter(line => line !== '')
-                     .join('\n'),
-        command: null
-      };
-    }
-    
-    // Find command line and comment lines
+    // Look for command lines starting with '>>'
     let commandLine = null;
-    let commentLines = [];
-    let inCommentBlock = false;
+    let commentContent = [];
     
     for (const line of lines) {
-      if (line.startsWith('#') && commandLine === null) {
-        // Comment before command - part of the comment block
-        commentLines.push(line.substring(1).trim());
-        inCommentBlock = true;
-      } else if (line === '' && inCommentBlock && commandLine === null) {
-        // Empty line in comment block - preserve as part of comment
-        commentLines.push('');
-      } else if (line && commandLine === null) {
-        // First non-comment, non-empty line is the command
-        commandLine = line;
-        inCommentBlock = false;
-      } else if (line.startsWith('#') && commandLine !== null) {
-        // Comment after command - stop parsing, these are preserved as context
+      if (line.startsWith('>>')) {
+        // Found a command, extract the part after '>>'
+        commandLine = line.substring(2).trim();
         break;
-      } else if (line && commandLine !== null) {
-        // Non-comment line after command - this should be part of the command context
-        // but we break to avoid mixing command with additional text
-        break;
+      } else {
+        // Add to comment part
+        commentContent.push(line);
       }
     }
     
+    // Clean comment content (remove empty lines at the beginning)
+    while (commentContent.length > 0 && commentContent[0] === '') {
+      commentContent.shift();
+    }
+    
+    const cleanComment = commentContent.join('\n');
+    
     if (commandLine === null) {
+      // No command found, it's just a comment
       return {
         type: 'comment',
-        content: commentLines.join('\n'),
-        command: null
+        content: cleanComment,
+        command: null,
+        fullResponse: response
       };
     }
     
+    // A command was found
     return {
       type: 'command',
       command: commandLine,
-      preComment: commentLines.length > 0 ? commentLines.join('\n') : null,
+      preComment: cleanComment || null,
       fullResponse: response
     };
   }

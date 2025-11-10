@@ -21,7 +21,8 @@ export class DeepSeekAPI {
       : messages;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), apiConfig.timeout);
+    let timeoutId;
+    timeoutId = setTimeout(() => controller.abort(), apiConfig.timeout);
     
     try {
       const response = await fetch(apiConfig.url, {
@@ -55,7 +56,7 @@ export class DeepSeekAPI {
         throw new Error('Invalid response format from API');
       }
       
-      return data.choices[0].message.content;
+      return data.choices[0]?.message?.content;
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {

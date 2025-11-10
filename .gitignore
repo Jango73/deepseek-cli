@@ -1,0 +1,29 @@
+# Common files
+*.c~
+*.o
+*.a
+*.com
+*.bin
+*.map
+*.lst
+*.log
+*.tmp
+*.elf
+*.sym
+*.img
+*.iso
+*.vmdk
+*.swp
+*.save
+*.user
+*.gdbinit
+
+# AI agents
+.claude/*
+.deepseek*
+.aider*
+
+# Node
+node_modules
+package-lock.json
+.env

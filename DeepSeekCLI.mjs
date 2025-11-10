@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import dotenv from "dotenv";
 
 import readline from 'readline';
 import fs from 'fs';
@@ -43,6 +44,7 @@ class DeepSeekCLI {
   }
 
   loadConfig() {
+    dotenv.config();
     const config = {
       apiKey: null,
       forbiddenCommands: [],
@@ -54,9 +56,9 @@ class DeepSeekCLI {
         const fileContent = fs.readFileSync(this.configFile, 'utf8');
         const fileConfig = JSON.parse(fileContent);
         
-        config.apiKey = fileConfig.apiKey || null;
+        config.apiKey = process.env.DEEPSEEK_API_KEY || fileConfig.apiKey || null;
         config.forbiddenCommands = fileConfig.forbiddenCommands || [];
-        config.systemPrompt = fileConfig.systemPrompt || '';
+        config.systemPrompt = fileConfig.systemPrompt ? fileConfig.systemPrompt.join('\n') : "";
       } else {
         console.log('⚠️ Config file does not exist!');
       }
@@ -157,15 +159,19 @@ class DeepSeekCLI {
           const commentLines = parsedResponse.content.split('\n');
           commentLines.forEach(line => {
             if (line.trim()) {
-              console.log(`💬 ${line}`);
+              console.log(`${line}`);
             }
           });
           currentPrompt = "Comment noted. Continue with next command.";
           iteration++;
           continue;
         } else {
-          const cleanedContent = parsedResponse.fullResponse.replace(/^#\s*/, '').trimStart();
-          console.log(`💬 ${this.sessionManager.truncateOutput(cleanedContent)}`);
+          const fullResponseLines = parsedResponse.fullResponse.split('\n');
+          fullResponseLines.forEach(line => {
+            if (line.trim()) {
+              console.log(`${line}`);
+            }
+          });
         }
 
         if (!parsedResponse.command || parsedResponse.command.length < 2) {
@@ -445,7 +451,7 @@ Interruption:
 // Main
 const main = async () => {
   const workingDir = process.argv[2];
-  const apiKey = process.argv[3];
+  const apiKey = process.env.DEEPSEEK_API_KEY || process.argv[3];
 
   if (!workingDir) {
     console.log('Missing working directory');

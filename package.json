@@ -4,8 +4,8 @@
   "description": "## TL;DR",
   "keywords": [],
   "author": "Jango73",
-  "license": "ISC",
+  "license": "GPLv3",
   "dependencies": {
-    "blessed": "^0.1.81"
+    "dotenv": "^16.4.5"
   }
 }
