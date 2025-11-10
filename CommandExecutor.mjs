@@ -76,23 +76,43 @@ export class CommandExecutor {
   parseAIResponse(response) {
     const lines = response.split('\n').map(line => line.trim());
     
-    if (lines.length > 0 && lines[0].startsWith('#') && lines.every(line => line.startsWith('#') || line === '')) {
+    // Check if the entire response is a comment (all lines start with # or are empty)
+    const isPureComment = lines.length > 0 && 
+                         lines.every(line => line.startsWith('#') || line === '');
+    
+    if (isPureComment) {
       return {
         type: 'comment',
-        content: lines.map(line => line.substring(1).trim()).join('\n'),
+        content: lines.map(line => line.startsWith('#') ? line.substring(1).trim() : line)
+                     .filter(line => line !== '')
+                     .join('\n'),
         command: null
       };
     }
     
+    // Find command line and comment lines
     let commandLine = null;
     let commentLines = [];
+    let inCommentBlock = false;
     
     for (const line of lines) {
       if (line.startsWith('#') && commandLine === null) {
+        // Comment before command - part of the comment block
         commentLines.push(line.substring(1).trim());
+        inCommentBlock = true;
+      } else if (line === '' && inCommentBlock && commandLine === null) {
+        // Empty line in comment block - preserve as part of comment
+        commentLines.push('');
       } else if (line && commandLine === null) {
+        // First non-comment, non-empty line is the command
         commandLine = line;
+        inCommentBlock = false;
       } else if (line.startsWith('#') && commandLine !== null) {
+        // Comment after command - stop parsing, these are preserved as context
+        break;
+      } else if (line && commandLine !== null) {
+        // Non-comment line after command - this should be part of the command context
+        // but we break to avoid mixing command with additional text
         break;
       }
     }

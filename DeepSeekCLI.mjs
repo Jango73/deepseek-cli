@@ -105,6 +105,11 @@ class DeepSeekCLI {
   }
 
   async executeTaskLoop(initialPrompt) {
+    // Store the initial prompt as session description
+    if (this.sessionManager.getInitialPrompt() === '' && initialPrompt) {
+      this.sessionManager.setInitialPrompt(initialPrompt);
+    }
+
     const maxIterations = 100;
     let currentPrompt = initialPrompt;
     let iteration = 1;
@@ -149,8 +154,12 @@ class DeepSeekCLI {
         const parsedResponse = this.commandExecutor.parseAIResponse(response);
 
         if (parsedResponse.type === 'comment') {
-          const cleanedContent = parsedResponse.content.replace(/^#\s*/, '').trimStart();
-          console.log(`💬 ${cleanedContent}`);
+          const commentLines = parsedResponse.content.split('\n');
+          commentLines.forEach(line => {
+            if (line.trim()) {
+              console.log(`💬 ${line}`);
+            }
+          });
           currentPrompt = "Comment noted. Continue with next command.";
           iteration++;
           continue;
@@ -166,28 +175,18 @@ class DeepSeekCLI {
           continue;
         }
 
+        // Handle "pause" command by breaking out of the loop
+        if (parsedResponse.command.toLowerCase() === 'pause' || parsedResponse.command.toLowerCase() === 'exit') {
+          shouldBreak = true;
+          break;
+        }
+
         const result = await this.commandExecutor.executeCommand(parsedResponse.command);
 
         if (this.isInterrupted || result.interrupted) {
           console.log("🛑 Interruption confirmed - stopping task...");
           shouldBreak = true;
           break;
-        }
-
-        if (result.paused) {
-          console.log('⏸️ AI is waiting for you to complete an action');
-          const userInput = await new Promise((resolve) => {
-            this.rl.question('> ', resolve);
-          });
-          
-          if (userInput.trim()) {
-            currentPrompt = userInput;
-          } else {
-            currentPrompt = "Action completed. Continue with next command.";
-          }
-          
-          iteration++;
-          continue;
         }
 
         this.sessionManager.addHistoryEntry({
@@ -257,6 +256,13 @@ class DeepSeekCLI {
           continue;
         }
 
+        // Handle commands with parameters
+        if (userPrompt.startsWith('/continue ')) {
+          const sessionId = userPrompt.substring(10).trim();
+          await this.handleContinue(sessionId);
+          continue;
+        }
+
         switch (userPrompt.toLowerCase()) {
           case '/quit':
           case '/exit':
@@ -266,7 +272,11 @@ class DeepSeekCLI {
             return;
 
           case '/clear':
-            this.sessionManager.clearSession();
+            await this.handleClear();
+            continue;
+
+          case '/clear-all':
+            this.handleClearAll();
             continue;
 
           case '/help':
@@ -290,6 +300,10 @@ class DeepSeekCLI {
             this.conversationManager.checkConversationSize();
             continue;
 
+          case '/archives':
+            this.showArchives();
+            continue;
+
           case '/continue':
             await this.handleContinue();
             continue;
@@ -309,8 +323,11 @@ class DeepSeekCLI {
 Commands:
 - <task> : Execute debugging task
 - /continue : Continue from last session
-- /clear : Clear history
+- /continue <session-id> : Switch to archived session
+- /clear : Archive current session and start new one
+- /clear-all : Delete all sessions and archives
 - /compact : Reduce conversation using AI
+- /archives : List all archived sessions
 - /help : Show this help
 - /quit | /exit : Quit
 - /forbidden : Show forbidden commands
@@ -338,7 +355,59 @@ Interruption:
     });
   }
 
-  async handleContinue() {
+  showArchives() {
+    const archives = this.sessionManager.listArchives();
+    
+    if (archives.length === 0) {
+      console.log('📂 No archived sessions found');
+      return;
+    }
+
+    console.log('📂 Archived sessions:');
+    console.log('=' .repeat(80));
+    
+    archives.forEach((archive, index) => {
+      console.log(`\n${index + 1}. ${archive.sessionId}`);
+      console.log(`   Description: ${archive.description}`);
+      console.log(`   Date: ${new Date(archive.timestamp).toLocaleString()}`);
+      console.log(`   Messages: ${archive.messageCount}, Commands: ${archive.commandCount}`);
+    });
+  }
+
+  async handleClear() {
+    if (this.sessionManager.conversationHistory.length === 0) {
+      console.log('ℹ️ No current session to archive');
+      this.sessionManager.clearCurrentSession();
+      return;
+    }
+
+    await this.sessionManager.archiveAndClear();
+    console.log('🆕 New session ready');
+  }
+
+  handleClearAll() {
+    this.removeKeypressListener();
+    this.rl.question('⚠️  Are you sure you want to delete ALL sessions and archives? (yes/no): ', (answer) => {
+      this.setupKeypressListener();
+      if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
+        this.sessionManager.clearAllSessions();
+      } else {
+        console.log('❌ Operation cancelled');
+      }
+    });
+  }
+
+  async handleContinue(sessionId = null) {
+    if (sessionId) {
+      // Switch to specific archived session
+      const success = await this.sessionManager.switchToArchive(sessionId);
+      if (!success) {
+        console.log(`❌ Could not switch to session: ${sessionId}`);
+      }
+      return;
+    }
+
+    // Continue from current session (original behavior)
     if (this.sessionManager.conversationHistory.length === 0) {
       console.log('❌ No session to continue - start a new task first');
       return;
