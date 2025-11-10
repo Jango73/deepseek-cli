@@ -1,5 +1,7 @@
 # DeepSeek CLI
 
+This is a personal project and I am in no way related to DeepSeek, just a simple user.
+
 ## Project Setup
 
 Before using the DeepSeek CLI, you need to set up the project dependencies:
