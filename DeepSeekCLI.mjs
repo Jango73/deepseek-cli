@@ -36,6 +36,7 @@ class DeepSeekCLI {
     
     this.rl = readline.createInterface({
       input: process.stdin,
+      terminal: false,
       output: process.stdout
     });
     
@@ -238,7 +239,6 @@ class DeepSeekCLI {
   async askUserPrompt() {
     return new Promise((resolve) => {
       this.removeKeypressListener();
-      
       this.rl.question('\n> ', (answer) => {
         this.setupKeypressListener();
         resolve(answer.trim());
