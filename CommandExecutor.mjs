@@ -19,7 +19,6 @@ export class CommandExecutor {
       const trimmedCommand = command.trim();
 
       if (trimmedCommand.toLowerCase() === 'pause' || trimmedCommand.toLowerCase() === 'exit') {
-        console.log('⏸️ Pause requested by AI');
         resolve({ 
           success: true, 
           output: 'PAUSE: Waiting for user action. Continue when ready.',
@@ -58,7 +57,6 @@ export class CommandExecutor {
         }
 
         if (stderr && stderr.trim()) {
-          console.log(`🔴 Stderr: ${stderr}`);
         }
 
         resolve({ success, output, error: error ? error.message : null });

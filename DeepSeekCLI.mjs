@@ -190,10 +190,6 @@ class DeepSeekCLI {
           continue;
         }
 
-        if (result.error) {
-          console.log(`❌ Command failed: ${result.error}`);
-        }
-
         this.sessionManager.addHistoryEntry({
           command: parsedResponse.command,
           success: result.success,
