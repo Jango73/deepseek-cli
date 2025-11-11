@@ -250,8 +250,6 @@ Interruption:
   }
 
   async startInteractiveSession() {
-    console.log('🔧 DeepSeek CLI');
-    console.log('====================================');
     console.log(`📁 Working directory: ${this.workingDirectory}`);
     console.log('Press ESC or Ctrl+C at any time to interrupt current task');
 
@@ -277,7 +275,6 @@ Interruption:
           case '/exit':
             this.removeKeypressListener();
             this.rl.close();
-            console.log('👋 Goodbye!');
             return;
 
           case '/clear':

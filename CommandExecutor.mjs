@@ -75,33 +75,68 @@ export class CommandExecutor {
     }
   }
 
+  isLikelyComment(line) {
+    return false;
+  }
+
+  shouldContinueCommandBlock(line, currentCommandLines) {
+    if (!line) return false;
+    if (this.isLikelyComment(line)) return false;
+    
+    // Continue if line ends with line continuation or is part of heredoc
+    if (line.endsWith('\\')) return true;
+    if (line.includes('<<') && !line.includes('EOF')) return true;
+    
+    // Check if we're in a heredoc context
+    const hasUnclosedHeredoc = currentCommandLines.some(cmd => 
+      cmd.includes('<<') && !currentCommandLines.some(c => c.trim() === 'EOF')
+    );
+    
+    return hasUnclosedHeredoc;
+  }
+
+  separateCommentsAndCommands(lines) {
+    let commentLines = [];
+    let commandLines = [];
+    let inCommandBlock = false;
+
+    for (const line of lines) {
+      if (line.startsWith('>>')) {
+        inCommandBlock = true;
+        const commandContent = line.substring(2).trim();
+        if (commandContent) commandLines.push(commandContent);
+      } else if (inCommandBlock && this.shouldContinueCommandBlock(line, commandLines)) {
+        commandLines.push(line);
+      } else {
+        inCommandBlock = false;
+        commentLines.push(line);
+      }
+    }
+
+    return { commentLines, commandLines };
+  }
+
+  cleanCommentLines(commentLines) {
+    const cleaned = [...commentLines];
+    while (cleaned.length > 0 && cleaned[0] === '') {
+      cleaned.shift();
+    }
+    return cleaned.join('\n');
+  }
+
+  reconstructMultilineCommand(commandLines) {
+    if (commandLines.length === 0) return null;
+    return commandLines.join('\n');
+  }
+
   parseAIResponse(response) {
     const lines = response.split('\n').map(line => line.trim());
     
-    // Look for command lines starting with '>>'
-    let commandLine = null;
-    let commentContent = [];
+    const { commentLines, commandLines } = this.separateCommentsAndCommands(lines);
+    const cleanComment = this.cleanCommentLines(commentLines);
+    const fullCommand = this.reconstructMultilineCommand(commandLines);
     
-    for (const line of lines) {
-      if (line.startsWith('>>')) {
-        // Found a command, extract the part after '>>'
-        commandLine = line.substring(2).trim();
-        break;
-      } else {
-        // Add to comment part
-        commentContent.push(line);
-      }
-    }
-    
-    // Clean comment content (remove empty lines at the beginning)
-    while (commentContent.length > 0 && commentContent[0] === '') {
-      commentContent.shift();
-    }
-    
-    const cleanComment = commentContent.join('\n');
-    
-    if (commandLine === null) {
-      // No command found, it's just a comment
+    if (!fullCommand) {
       return {
         type: 'comment',
         content: cleanComment,
@@ -110,10 +145,9 @@ export class CommandExecutor {
       };
     }
     
-    // A command was found
     return {
       type: 'command',
-      command: commandLine,
+      command: fullCommand,
       preComment: cleanComment || null,
       fullResponse: response
     };
