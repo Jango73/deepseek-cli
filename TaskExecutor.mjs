@@ -11,6 +11,9 @@ export class TaskExecutor {
   }
 
   async executeTaskLoop(initialPrompt, systemPrompt, cliInstance = null) {
+    // Réinitialiser le flag d'interruption au début
+    this.isInterrupted = false;
+    
     // Store the initial prompt as session description
     if (this.sessionManager.getInitialPrompt() === '' && initialPrompt) {
       this.sessionManager.setInitialPrompt(initialPrompt);
@@ -28,8 +31,10 @@ export class TaskExecutor {
     }
 
     while (iteration <= maxIterations && !shouldBreak && !this.isInterrupted) {
+      // Vérifier l'interruption au début de chaque itération
       if (cliInstance && cliInstance.isInterrupted) {
         this.isInterrupted = true;
+        break;
       }
 
       if (needsCompaction) {
@@ -135,12 +140,11 @@ export class TaskExecutor {
       }
     }
 
-    if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted)) {
-      console.log('🔄 Returning to main prompt...');
+    if (this.isInterrupted) {
+      console.log('🔄 Task interrupted - returning to main prompt...');
       this.isInterrupted = false;
-      if (cliInstance) {
-        cliInstance.isInterrupted = false;
-      }
+    } else if (!shouldBreak && iteration > maxIterations) {
+      console.log(`\n🔁 Maximum iterations (${maxIterations}) reached`);
     } else if (!shouldBreak) {
       console.log(`\n✅ Task completed`);
     }

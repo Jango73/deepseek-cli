@@ -7,6 +7,7 @@ import { SessionManager } from './SessionManager.mjs';
 import { CommandExecutor } from './CommandExecutor.mjs';
 import { ConversationManager } from './ConversationManager.mjs';
 import { TaskExecutor } from './TaskExecutor.mjs';
+import { runAgent } from './AgentRunner.mjs';
 
 export class DeepSeekCLI {
   constructor(apiKey, workingDir) {
@@ -83,23 +84,24 @@ export class DeepSeekCLI {
   }
 
   setupKeypressListener() {
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
-    }
-    process.stdin.setEncoding('utf8');
-    
-    this.keypressHandler = (key) => {
-      if (key === '\u001b' || key === '\u0003') {
-        if (!this.isInterrupted) {
-          this.isInterrupted = true;
-          console.log('\n🛑 INTERRUPTION REQUESTED - Stopping current operation...');
-          this.commandExecutor.killCurrentProcess();
-          this.taskExecutor.interrupt();
-        }
+      if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
       }
-    };
-    
-    process.stdin.on('data', this.keypressHandler);
+      process.stdin.setEncoding('utf8');
+      
+      this.keypressHandler = (key) => {
+          if (key === '\u001b' || key === '\u0003') {
+              if (!this.isInterrupted) {
+                  this.isInterrupted = true;
+                  console.log('\n🛑 INTERRUPTION REQUESTED - Stopping current operation...');
+                  this.commandExecutor.killCurrentProcess();
+                  this.taskExecutor.interrupt();
+                  // Do NOT force app exit - only stop current operation
+              }
+          }
+      };
+      
+      process.stdin.on('data', this.keypressHandler);
   }
 
   removeKeypressListener() {
@@ -249,6 +251,25 @@ Interruption:
     await this.taskExecutor.executeTaskLoop(continuePrompt, this.systemPrompt, this);
   }
 
+  async launchAgentFromUserCommand(agentId, message) {
+      try {
+          console.log(`🚀 Launching agent "${agentId}" with message: "${message}"`);
+          const configPath = this.configFile;
+          const apiKey = this.apiKey;
+
+          await runAgent(agentId, message, {
+              configPath,
+              depth: 0,
+              apiKey,
+              parentSessionManager: this.sessionManager
+          });
+          
+          console.log(`✅ Agent "${agentId}" completed - session archived`);
+      } catch (err) {
+          console.error(`❌ Failed to launch agent "${agentId}": ${err.message}`);
+      }
+  }
+
   async startInteractiveSession() {
     console.log(`📁 Working directory: ${this.workingDirectory}`);
     console.log('Press ESC or Ctrl+C at any time to interrupt current task');
@@ -268,6 +289,20 @@ Interruption:
           const sessionId = userPrompt.substring(10).trim();
           await this.handleContinue(sessionId);
           continue;
+        }
+
+        if (userPrompt.startsWith('/agent ')) {
+            const parts = userPrompt.split(' ');
+            const agentId = parts[1];
+            const message = userPrompt.substring(userPrompt.indexOf(agentId) + agentId.length).trim().replace(/^"|"$/g, '');
+
+            if (!agentId || !message) {
+                console.log('Usage: /agent <agentId> "<message>"');
+                continue;
+            }
+
+            await this.launchAgentFromUserCommand(agentId, message);
+            continue;
         }
 
         switch (userPrompt.toLowerCase()) {

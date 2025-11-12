@@ -15,57 +15,63 @@ export class CommandExecutor {
   }
 
   executeCommand(command) {
-    return new Promise((resolve) => {
-      const trimmedCommand = command.trim();
+      return new Promise((resolve) => {
+          const trimmedCommand = command.trim();
 
-      if (trimmedCommand.toLowerCase() === 'pause' || trimmedCommand.toLowerCase() === 'exit') {
-        resolve({ 
-          success: true, 
-          output: 'PAUSE: Waiting for user action. Continue when ready.',
-          paused: true
-        });
-        return;
-      }
+          if (trimmedCommand.toLowerCase() === 'pause' || trimmedCommand.toLowerCase() === 'exit') {
+              resolve({ 
+                  success: true, 
+                  output: 'PAUSE: Waiting for user action. Continue when ready.',
+                  paused: true
+              });
+              return;
+          }
 
-      if (!trimmedCommand) {
-        resolve({ 
-          success: false, 
-          output: '❌ Empty command',
-          error: 'Empty command'
-        });
-        return;
-      }
+          if (!trimmedCommand) {
+              resolve({ 
+                  success: false, 
+                  output: '❌ Empty command',
+                  error: 'Empty command'
+              });
+              return;
+          }
 
-      if (this.isCommandForbidden(trimmedCommand)) {
-        resolve({ 
-          success: false, 
-          output: `❌ FORBIDDEN COMMAND: "${trimmedCommand}" is not allowed for safety reasons.`,
-          error: 'Forbidden command'
-        });
-        return;
-      }
+          if (this.isCommandForbidden(trimmedCommand)) {
+              resolve({ 
+                  success: false, 
+                  output: `❌ FORBIDDEN COMMAND: "${trimmedCommand}" is not allowed for safety reasons.`,
+                  error: 'Forbidden command'
+              });
+              return;
+          }
 
-        // SECURITY FIX: Use execFile to prevent command injection
-        const args = ["-c", trimmedCommand];
-        const childProcess = execFile("/bin/sh", args, { timeout: 60000, cwd: this.workingDirectory }, (error, stdout, stderr) => {
-        this.currentExecution = null;
-        
-        const output = stdout + stderr;
-        const success = error === null;
+          console.log(`🔧 Executing: ${trimmedCommand}`);
 
-        if (error) {
-          console.log(`🔴 Exit code: ${error.code}`);
-          console.log(`🔴 Error: ${error.message}`);
-        }
+          const args = ["-c", trimmedCommand];
+          const childProcess = execFile("/bin/sh", args, { 
+              timeout: 60000, 
+              cwd: this.workingDirectory 
+          }, (error, stdout, stderr) => {
+              this.currentExecution = null;
+              
+              const output = stdout + stderr;
+              const success = error === null;
 
-        if (stderr && stderr.trim()) {
-        }
+              console.log(`🔧 Command output: ${output}`);
 
-        resolve({ success, output, error: error ? error.message : null });
+              if (error) {
+                  console.log(`🔴 Exit code: ${error.code}`);
+              }
+
+              resolve({ 
+                  success, 
+                  output: output || 'No output',
+                  error: error ? error.message : null 
+              });
+          });
+
+          this.currentExecution = childProcess;
       });
-
-      this.currentExecution = childProcess;
-    });
   }
 
   killCurrentProcess() {
@@ -79,36 +85,78 @@ export class CommandExecutor {
     return false;
   }
 
+  getCurrentHeredocMarker(commandLines) {
+    let heredocMarker = null;
+    
+    for (const cmd of commandLines) {
+      // Détecter le début d'un heredoc
+      const heredocMatch = cmd.match(/<<\s*['"]?(\w+)['"]?/);
+      if (heredocMatch) {
+        heredocMarker = heredocMatch[1];
+      }
+      
+      // Si on trouve le marqueur de fin, reset
+      if (heredocMarker && cmd.trim() === heredocMarker) {
+        heredocMarker = null;
+      }
+    }
+    
+    return heredocMarker;
+  }
+
   shouldContinueCommandBlock(line, currentCommandLines) {
     if (!line) return false;
     if (this.isLikelyComment(line)) return false;
     
-    // Continue if line ends with line continuation or is part of heredoc
+    // Continue si la ligne se termine par un backslash (continuation)
     if (line.endsWith('\\')) return true;
-    if (line.includes('<<') && !line.includes('EOF')) return true;
     
-    // Check if we're in a heredoc context
-    const hasUnclosedHeredoc = currentCommandLines.some(cmd => 
-      cmd.includes('<<') && !currentCommandLines.some(c => c.trim() === 'EOF')
-    );
+    // Vérifier si nous sommes dans un contexte heredoc
+    const heredocMarker = this.getCurrentHeredocMarker(currentCommandLines);
+    if (heredocMarker && line.trim() !== heredocMarker) {
+      return true; // On est toujours dans le heredoc
+    }
     
-    return hasUnclosedHeredoc;
+    return false;
   }
 
   separateCommentsAndCommands(lines) {
     let commentLines = [];
     let commandLines = [];
     let inCommandBlock = false;
+    let inHeredoc = false;
+    let heredocMarker = null;
 
     for (const line of lines) {
-      if (line.startsWith('>>')) {
+      const trimmedLine = line.trim();
+      
+      if (trimmedLine.startsWith('>>')) {
         inCommandBlock = true;
-        const commandContent = line.substring(2).trim();
+        const commandContent = trimmedLine.substring(2).trim();
         if (commandContent) commandLines.push(commandContent);
-      } else if (inCommandBlock && this.shouldContinueCommandBlock(line, commandLines)) {
-        commandLines.push(line);
-      } else {
+        
+        // Vérifier si cette commande commence un heredoc
+        if (commandContent.includes('<<')) {
+          const match = commandContent.match(/<<\s*['"]?(\w+)['"]?/);
+          if (match) {
+            inHeredoc = true;
+            heredocMarker = match[1];
+          }
+        }
+      } 
+      else if (inCommandBlock && (this.shouldContinueCommandBlock(trimmedLine, commandLines) || inHeredoc)) {
+        commandLines.push(trimmedLine);
+        
+        // Vérifier si c'est la fin du heredoc
+        if (inHeredoc && trimmedLine === heredocMarker) {
+          inHeredoc = false;
+          heredocMarker = null;
+        }
+      }
+      else {
         inCommandBlock = false;
+        inHeredoc = false;
+        heredocMarker = null;
         commentLines.push(line);
       }
     }
@@ -126,7 +174,37 @@ export class CommandExecutor {
 
   reconstructMultilineCommand(commandLines) {
     if (commandLines.length === 0) return null;
-    return commandLines.join('\n');
+    
+    // Reconstruire le commande en gérant les heredocs
+    let reconstructed = '';
+    let inHeredoc = false;
+    let heredocMarker = null;
+    
+    for (let i = 0; i < commandLines.length; i++) {
+      const line = commandLines[i];
+      
+      if (i > 0) {
+        reconstructed += '\n';
+      }
+      reconstructed += line;
+      
+      // Détecter le début d'un heredoc
+      if (!inHeredoc && line.includes('<<')) {
+        const match = line.match(/<<\s*['"]?(\w+)['"]?/);
+        if (match) {
+          inHeredoc = true;
+          heredocMarker = match[1];
+        }
+      }
+      
+      // Détecter la fin d'un heredoc
+      if (inHeredoc && line.trim() === heredocMarker) {
+        inHeredoc = false;
+        heredocMarker = null;
+      }
+    }
+    
+    return reconstructed;
   }
 
   parseAIResponse(response) {
