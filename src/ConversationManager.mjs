@@ -97,7 +97,7 @@ ${fullConversation}
     return true;
   }
 
-  async askDeepSeek(prompt, workingDirectory, systemPrompt) {
+  async askDeepSeek(prompt, workingDirectory, systemPrompt, abortController = null) {
     let agentsContent = '';
     if (this.sessionManager.conversationHistory.length === 0) {
       try {
@@ -120,7 +120,7 @@ Current directory: ${workingDirectory}`;
       { role: 'user', content: prompt }
     ];
 
-    const result = await this.deepSeekAPI.makeApiRequest(messages, finalSystemPrompt);
+    const result = await this.deepSeekAPI.makeApiRequest(messages, finalSystemPrompt, abortController);
 
     this.sessionManager.addConversationMessage('user', prompt);
     this.sessionManager.addConversationMessage('assistant', result);

@@ -39,12 +39,18 @@ export class DeepSeekCLI {
     this.interruptController = interruptController || new InterruptController();
     this.interruptController.start();
     this.interruptCleanup = this.interruptController.onInterrupt(() => this.handleInterruptSignal());
+    this.currentAIRequestAbortController = null;
 
     try {
       const rootContext = this.createAgentContext(this.defaultAgentId, { isRoot: true });
       this.agentStack.push(rootContext);
       this.applyContext(rootContext);
       console.log(`🚀 Agent "${this.currentAgentId}" instantiated (root context)`);
+      this.logPromptInfo(rootContext);
+      if (rootContext.initialPrompt) {
+        const preview = this.generatePromptPreview(rootContext.initialPrompt);
+        console.log(`🗒️ Task (${rootContext.agentId}): ${preview}`);
+      }
     } catch (error) {
       console.error(`❌ Failed to initialize default agent: ${error.message}`);
       process.exit(1);
@@ -106,7 +112,12 @@ export class DeepSeekCLI {
 
   resolveAgentPrompt(agentDefinition) {
     if (!agentDefinition.systemPrompt) {
-      return this.config.systemPrompt || '';
+      const content = this.config.systemPrompt || '';
+      return {
+        content,
+        source: 'config.systemPrompt',
+        preview: this.generatePromptPreview(content)
+      };
     }
 
     const promptPath = agentDefinition.systemPrompt.startsWith('.')
@@ -114,16 +125,26 @@ export class DeepSeekCLI {
       : agentDefinition.systemPrompt;
 
     try {
-      return fs.readFileSync(promptPath, 'utf8');
+      const content = fs.readFileSync(promptPath, 'utf8');
+      return {
+        content,
+        source: promptPath,
+        preview: this.generatePromptPreview(content)
+      };
     } catch (error) {
       console.warn(`⚠️ Unable to load system prompt for ${agentDefinition.id}: ${error.message}`);
-      return this.config.systemPrompt || '';
+      const content = this.config.systemPrompt || '';
+      return {
+        content,
+        source: 'config.systemPrompt',
+        preview: this.generatePromptPreview(content)
+      };
     }
   }
 
   createAgentContext(agentId, options = {}) {
     const agentDefinition = this.getAgentDefinition(agentId);
-    const systemPrompt = this.resolveAgentPrompt(agentDefinition);
+    const { content: systemPrompt, source: promptSource, preview: promptPreview } = this.resolveAgentPrompt(agentDefinition);
     const isRoot = options.isRoot || false;
     const sessionNamespace = isRoot ? null : `${agentId}_${Date.now().toString(36)}`;
     const sessionManager = new SessionManager(this.workingDirectory, { sessionNamespace });
@@ -146,7 +167,10 @@ export class DeepSeekCLI {
       conversationManager,
       taskExecutor,
       sessionNamespace,
-      autoPopOnComplete: false
+      autoPopOnComplete: false,
+      promptSource,
+      promptPreview,
+      systemPrompt
     };
   }
 
@@ -164,6 +188,11 @@ export class DeepSeekCLI {
     this.agentStack.push(context);
     this.applyContext(context);
     console.log(`🚀 Agent "${agentId}" instantiated`);
+    this.logPromptInfo(context);
+    if (initialPrompt) {
+      const preview = this.generatePromptPreview(initialPrompt);
+      console.log(`🗒️ Task (${agentId}): ${preview}`);
+    }
     context.autoPopOnComplete = Boolean(initialPrompt);
 
     if (!initialPrompt) {
@@ -231,12 +260,43 @@ export class DeepSeekCLI {
     if (this.taskExecutor) {
       this.taskExecutor.interrupt();
     }
+    if (this.currentAIRequestAbortController) {
+      this.currentAIRequestAbortController.abort();
+      this.currentAIRequestAbortController = null;
+    }
   }
 
   cleanupInterruptHandling() {
     if (this.interruptCleanup) {
       this.interruptCleanup();
       this.interruptCleanup = null;
+    }
+  }
+
+  generatePromptPreview(promptText) {
+    if (!promptText) {
+      return 'Empty prompt';
+    }
+    const firstLine = promptText
+      .split('\n')
+      .map(line => line.trim())
+      .find(line => line.length > 0) || promptText.substring(0, 80);
+    return firstLine.length > 120 ? `${firstLine.substring(0, 117)}...` : firstLine;
+  }
+
+  logPromptInfo(context) {}
+
+  createAIAbortController() {
+    if (this.currentAIRequestAbortController) {
+      this.currentAIRequestAbortController.abort();
+    }
+    this.currentAIRequestAbortController = new AbortController();
+    return this.currentAIRequestAbortController;
+  }
+
+  releaseAIAbortController(controller) {
+    if (this.currentAIRequestAbortController === controller) {
+      this.currentAIRequestAbortController = null;
     }
   }
 

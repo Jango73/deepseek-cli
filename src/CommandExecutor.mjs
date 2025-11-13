@@ -1,6 +1,10 @@
-import { exec, execFile } from "child_process";
+import { execFile } from "child_process";
+import fs from 'fs';
+import path from 'path';
 
 export class CommandExecutor {
+  static MAX_COMMAND_LINES = 20;
+
   constructor(workingDirectory, forbiddenCommands) {
     this.workingDirectory = workingDirectory;
     this.forbiddenCommands = new Set(forbiddenCommands.map(cmd => cmd.toLowerCase()));
@@ -16,6 +20,14 @@ export class CommandExecutor {
 
   executeCommand(command) {
       return new Promise((resolve) => {
+          if (typeof command !== 'string') {
+              resolve({
+                  success: false,
+                  output: '❌ Invalid command input',
+                  error: 'INVALID_COMMAND'
+              });
+              return;
+          }
           const trimmedCommand = command.trim();
 
           if (trimmedCommand.toLowerCase() === 'pause' || trimmedCommand.toLowerCase() === 'exit') {
@@ -55,6 +67,23 @@ export class CommandExecutor {
               return;
           }
 
+          const heredocResult = this.tryHandleHeredocCommand(command);
+          if (heredocResult) {
+            resolve(heredocResult);
+            return;
+          }
+
+          const commandLines = command.split('\n');
+          if (commandLines.length > CommandExecutor.MAX_COMMAND_LINES) {
+            resolve({
+              success: false,
+              output: `⚠️ Command skipped: ${commandLines.length} lines detected (max ${CommandExecutor.MAX_COMMAND_LINES}). Split the script into smaller blocks.`,
+              error: 'COMMAND_TOO_LONG',
+              lineCount: commandLines.length
+            });
+            return;
+          }
+
           const args = ["-c", trimmedCommand];
           const childProcess = execFile("/bin/sh", args, { 
               timeout: 60000, 
@@ -80,6 +109,64 @@ export class CommandExecutor {
       });
   }
 
+  tryHandleHeredocCommand(command) {
+    const lines = command.split('\n');
+    if (lines.length === 0) {
+      return null;
+    }
+
+    const firstLine = lines[0].trim();
+    const heredocMatch = firstLine.match(/^cat\s+(>?>)\s+(.+?)\s+<<\s*(['"]?)([A-Za-z0-9_-]+)\3\s*$/);
+    if (!heredocMatch) {
+      return null;
+    }
+
+    const operator = heredocMatch[1];
+    let targetPath = heredocMatch[2].trim();
+    if ((targetPath.startsWith('"') && targetPath.endsWith('"')) || (targetPath.startsWith("'") && targetPath.endsWith("'"))) {
+      targetPath = targetPath.substring(1, targetPath.length - 1);
+    }
+    const terminator = heredocMatch[4];
+
+    const closingIndex = lines.findIndex((line, idx) => idx > 0 && line.replace(/\r$/, '') === terminator);
+    if (closingIndex === -1) {
+      return {
+        success: false,
+        output: `❌ Unterminated heredoc marker "${terminator}". Complete the block before executing.`,
+        error: 'UNTERMINATED_HEREDOC'
+      };
+    }
+
+    const contentLines = lines.slice(1, closingIndex);
+    let content = contentLines.join('\n');
+    if (content.length && !content.endsWith('\n')) {
+      content += '\n';
+    }
+
+    try {
+      const absolutePath = path.isAbsolute(targetPath)
+        ? targetPath
+        : path.join(this.workingDirectory, targetPath);
+      fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+      if (operator === '>>') {
+        fs.appendFileSync(absolutePath, content);
+      } else {
+        fs.writeFileSync(absolutePath, content);
+      }
+      return {
+        success: true,
+        output: `✅ Wrote ${contentLines.length} line(s) to ${targetPath}`,
+        error: null
+      };
+    } catch (error) {
+      return {
+        success: false,
+        output: `❌ Failed to write file: ${error.message}`,
+        error: 'HEREDOC_WRITE_FAILED'
+      };
+    }
+  }
+
   killCurrentProcess() {
     if (this.currentExecution) {
       this.currentExecution.kill('SIGTERM');
@@ -88,146 +175,81 @@ export class CommandExecutor {
   }
 
   parseAIResponse(response) {
-    const preferCodeBlocks = response.includes('```');
-    const summaryPrefixes = ['command:', 'output:', 'result:', 'success:', 'error:'];
-    const lines = response.split('\n');
     const actions = [];
-    let currentScriptLines = [];
-    let pendingCommentLines = [];
-    let inCodeBlock = false;
-
-    const flushScript = () => {
-      if (currentScriptLines.length === 0) {
-        return;
-      }
-      const script = currentScriptLines.join('\n').trim();
-      if (script) {
-        actions.push({ type: 'shell', content: script });
-      }
-      currentScriptLines = [];
+    const agentLineRegex = /^agent\s+(\w+)\s*:?\s*(.*)$/i;
+    const diagnostics = {
+      unclosedBlocks: []
     };
 
-    const flushComment = () => {
-      if (pendingCommentLines.length === 0) {
+    const flushCommentLines = (lines) => {
+      if (!lines.length) {
         return;
       }
-      const text = pendingCommentLines.join('\n').trim();
+      const text = lines.join('\n').trim();
       if (text) {
         actions.push({ type: 'comment', content: text });
       }
-      pendingCommentLines = [];
+      lines.length = 0;
     };
 
-    const pushCommentLine = (text) => {
-      if (text === null || text === undefined) {
-        return;
-      }
-      pendingCommentLines.push(text);
-    };
-
-    const handleAgentLine = (trimmedLine) => {
-      const agentMatch = trimmedLine.match(/^agent\s+(\w+)\s*:?\s*(.+)?$/i);
-      if (!agentMatch) {
-        return false;
-      }
-      flushComment();
-      flushScript();
-      actions.push({
-        type: 'agent',
-        agentId: agentMatch[1],
-        message: (agentMatch[2] || '').trim()
-      });
-      return true;
-    };
-
-    const isSummaryLine = (trimmedLine) => {
-      if (!trimmedLine) return false;
-      const normalized = trimmedLine.toLowerCase();
-      return summaryPrefixes.some(prefix => normalized.startsWith(prefix));
-    };
-
-    const handleLineContent = (text) => {
-      if (!text && !inCodeBlock) {
-        flushComment();
+    const appendChatSegment = (segment) => {
+      if (!segment) {
         return;
       }
 
-      const trimmedLine = text.trim();
+      const lines = segment.split('\n');
+      const commentBuffer = [];
 
-      if (!inCodeBlock) {
-        if (trimmedLine.startsWith('>>')) {
-          flushComment();
-          const comment = trimmedLine.substring(2).trim();
-          if (comment) {
-            actions.push({ type: 'comment', content: comment });
-          }
-          return;
+      for (const rawLine of lines) {
+        const normalized = rawLine.trim();
+        if (!normalized) {
+          flushCommentLines(commentBuffer);
+          continue;
         }
 
-        if (handleAgentLine(trimmedLine)) {
-          return;
+        const agentMatch = normalized.match(agentLineRegex);
+        if (agentMatch) {
+          flushCommentLines(commentBuffer);
+          actions.push({
+            type: 'agent',
+            agentId: agentMatch[1],
+            message: (agentMatch[2] || '').trim()
+          });
+          continue;
         }
 
-        if (isSummaryLine(trimmedLine)) {
-          flushScript();
-          pushCommentLine(trimmedLine);
-          return;
-        }
-
-        if (preferCodeBlocks) {
-          if (trimmedLine) {
-            pushCommentLine(trimmedLine);
-          } else {
-            flushComment();
-          }
-        } else {
-          flushComment();
-          currentScriptLines.push(text);
-        }
-        return;
+        commentBuffer.push(normalized);
       }
 
-      currentScriptLines.push(text);
+      flushCommentLines(commentBuffer);
     };
 
-    for (const rawLine of lines) {
-      let line = rawLine.replace(/\r$/, '');
-
-      const processSegment = (segment) => {
-        if (!segment.length) return;
-        handleLineContent(segment);
-      };
-
-      while (true) {
-        const fenceIndex = line.indexOf('```');
-        if (fenceIndex === -1) {
-          processSegment(line);
-          break;
-        }
-
-        const beforeFence = line.substring(0, fenceIndex);
-        processSegment(beforeFence);
-
-        const afterFence = line.substring(fenceIndex + 3);
-
-        if (!inCodeBlock) {
-          flushComment();
-          inCodeBlock = true;
-          // Skip optional language hint immediately after the fence
-          const langMatch = afterFence.match(/^[a-zA-Z0-9_-]+/);
-          line = langMatch
-            ? afterFence.substring(langMatch[0].length).replace(/^\s*/, '')
-            : afterFence;
-        } else {
-          flushScript();
-          inCodeBlock = false;
-          line = afterFence;
-        }
+    let cursor = 0;
+    while (cursor < response.length) {
+      const start = response.indexOf('>>>', cursor);
+      if (start === -1) {
+        appendChatSegment(response.substring(cursor));
+        break;
       }
+
+      appendChatSegment(response.substring(cursor, start));
+
+      const end = response.indexOf('<<<', start + 3);
+      if (end === -1) {
+        diagnostics.unclosedBlocks.push({
+          startIndex: start,
+          preview: response.substring(start, Math.min(response.length, start + 200))
+        });
+        appendChatSegment(response.substring(start));
+        break;
+      }
+
+      const commandText = response.substring(start + 3, end).trim();
+      if (commandText) {
+        actions.push({ type: 'shell', content: commandText });
+      }
+      cursor = end + 3;
     }
-
-    flushScript();
-    flushComment();
 
     const commands = actions
       .filter(action => action.type === 'shell')
@@ -245,7 +267,8 @@ export class CommandExecutor {
       command: commands[0] || null,
       commands,
       actions,
-      fullResponse: response
+      fullResponse: response,
+      diagnostics
     };
   }
 
@@ -262,12 +285,9 @@ export class CommandExecutor {
     lines.push('Output:');
     const outputLines = (output || 'No output').split('\n');
     lines.push(...outputLines);
-    lines.push('', 'Next command?');
+    lines.push('', 'Next command? Remember to wrap it between >>> and <<<.');
 
-    return lines
-      .map(line => `>> ${line}`)
-      .join('\n')
-      .trimEnd();
+    return lines.join('\n').trimEnd();
   }
 
   findUnterminatedHeredoc(command) {

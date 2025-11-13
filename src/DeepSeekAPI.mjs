@@ -13,7 +13,7 @@ export class DeepSeekAPI {
     };
   }
 
-  async makeApiRequest(messages, systemPrompt = null) {
+  async makeApiRequest(messages, systemPrompt = null, abortController = null) {
     const apiConfig = this.getApiConfig();
     const cleanupWaitIndicator = (() => {
       const startTime = Date.now();
@@ -45,9 +45,13 @@ export class DeepSeekAPI {
       ? [{ role: 'system', content: systemPrompt }, ...messages]
       : messages;
 
-    const controller = new AbortController();
+    const controller = abortController || new AbortController();
     let timeoutId;
-    timeoutId = setTimeout(() => controller.abort(), apiConfig.timeout);
+    timeoutId = setTimeout(() => {
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
+    }, apiConfig.timeout);
     
     try {
       const response = await fetch(apiConfig.url, {
@@ -85,7 +89,7 @@ export class DeepSeekAPI {
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        console.error('❌ API request timeout');
+        console.error('❌ API request aborted');
       } else {
         console.error('❌ API call failed:', error.message);
       }

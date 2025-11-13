@@ -10,9 +10,9 @@ const __dirname = dirname(__filename);
 
 const agentStack = [];
 
-async function askDeepseek(conversation, apiKey) {
+async function askDeepseek(conversation, apiKey, abortController = null) {
     const api = new DeepSeekAPI(apiKey);
-    return await api.makeApiRequest(conversation);
+    return await api.makeApiRequest(conversation, null, abortController);
 }
 
 export async function runAgent(agentId, inputMessage = '', opts = {}) {
@@ -45,6 +45,7 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
         : `${agentId}_${Date.now().toString(36)}`;
     const agentSessionManager = new SessionManager(agentWorkingDir, { sessionNamespace });
     const commandExecutor = new CommandExecutor(agentWorkingDir, []);
+    let currentApiAbortController = null;
     let interrupted = false;
     const unregisterInterrupt = interruptController
       ? interruptController.onInterrupt(() => {
@@ -52,10 +53,12 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
           interrupted = true;
           const prefix = depth > 0 ? '│ '.repeat(depth) : '';
           process.stdout.write(`${prefix}\n⏹️ Interruption requested. Stopping "${agentId}"…\n`);
+          currentApiAbortController?.abort();
           commandExecutor.killCurrentProcess();
         })
       : null;
     
+    const basePrefix = depth > 0 ? '│ '.repeat(depth) : '';
     const parentSessionId = parentSessionManager?.currentSessionId || 'main';
     agentSessionManager.currentSessionId = `${parentSessionId}_agent_${agentId}_${Date.now().toString(36)}`;
     agentSessionManager.currentSessionDescription = `Agent: ${agentId} - ${inputMessage.substring(0, 50)}${inputMessage.length > 50 ? '...' : ''}`;
@@ -68,12 +71,23 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
 
     const systemPrompt = await fs.readFile(resolvedSystemPromptPath, 'utf8');
     
+    const previewLines = systemPrompt
+      .split('\n')
+      .filter(line => line.trim().length > 0)
+      .slice(0, 5);
+    const truncatedPreview = previewLines.length
+      ? previewLines.join(' / ')
+      : systemPrompt.substring(0, 120);
+    const taskPreview = inputMessage
+      ? inputMessage.split('\n').map(line => line.trim()).filter(Boolean).slice(0, 3).join(' / ')
+      : '(empty)';
+    process.stdout.write(`${basePrefix}🗒️ Task (${agentId}): ${taskPreview}\n`);
+    
     agentSessionManager.addConversationMessage('system', systemPrompt);
     agentSessionManager.addConversationMessage('user', inputMessage);
     agentSessionManager.saveSession();
 
     agentStack.push(agentId);
-    const basePrefix = depth > 0 ? '│ '.repeat(depth) : '';
     process.stdout.write(`${basePrefix}🚀 Agent "${agentId}" instantiated (depth ${depth})\n`);
 
     const checkInterruption = () => {
@@ -86,17 +100,41 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
         while (true) {
             checkInterruption();
             const messages = agentSessionManager.getConversationHistory();
-            const response = await askDeepseek(messages, apiKey);
+            const apiController = new AbortController();
+            currentApiAbortController = apiController;
+            let response;
+            try {
+                response = await askDeepseek(messages, apiKey, apiController);
+            } catch (error) {
+                if (error.name === 'AbortError' && (interrupted || interruptController?.isInterrupted())) {
+                    throw new Error('INTERRUPTED_BY_USER');
+                }
+                throw error;
+            } finally {
+                currentApiAbortController = null;
+            }
             checkInterruption();
 
             agentSessionManager.addConversationMessage('assistant', response);
             agentSessionManager.saveSession();
 
             const parsed = commandExecutor.parseAIResponse(response);
+            if (parsed.diagnostics?.unclosedBlocks?.length) {
+                for (const block of parsed.diagnostics.unclosedBlocks) {
+                    const preview = block.preview.replace(/\s+/g, ' ').trim();
+                    process.stdout.write(`${basePrefix}⚠️ Incomplete command block detected (missing <<<). Preview: ${preview}\n`);
+                }
+            }
             const actions = parsed.actions || [];
 
             if (actions.length === 0) {
                 process.stdout.write(`${basePrefix}❓ AI response contained no executable command. Waiting for clarification.\n`);
+                const reminderMessage = [
+                  'No executable command was detected in your last response.',
+                  'Provide the next shell command wrapped between >>> and <<<, delegate to another agent, or reply with "done" when finished.'
+                ].join(' ');
+                agentSessionManager.addConversationMessage('system', reminderMessage);
+                agentSessionManager.saveSession();
             }
 
             for (const action of actions) {
@@ -124,25 +162,46 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
 
                 if (action.type === 'shell') {
                     try {
-                        const display = action.content.includes('\n')
-                            ? `\n${action.content}`
-                            : ` ${action.content}`;
-                        process.stdout.write(`${basePrefix}🔧 Executing:${display}\n`);
+                        const commandLines = action.content.split('\n');
+                        const printBlock = (title, lines) => {
+                            const header = `${basePrefix}========== ${title} ==========\n`;
+                            const footer = `${basePrefix}======== END ${title} ========\n`;
+                            process.stdout.write(header);
+                            for (const line of lines) {
+                                process.stdout.write(`${basePrefix}${line}\n`);
+                            }
+                            process.stdout.write(footer);
+                        };
+
+                        printBlock('COMMAND', ['>>>', ...commandLines, '<<<']);
                         
                         const result = await commandExecutor.executeCommand(action.content);
                         checkInterruption();
                         
-                        process.stdout.write(`${basePrefix}${result.output}\n`);
+                        if (result.error === 'COMMAND_TOO_LONG') {
+                            const warningMessage = [
+                              `Your command contained ${result.lineCount} lines. The maximum allowed is ${CommandExecutor.MAX_COMMAND_LINES}.`,
+                              'Split large scripts into multiple >>>/<<< blocks (each ≤20 lines) before resubmitting.'
+                            ].join(' ');
+                            agentSessionManager.addConversationMessage('system', warningMessage);
+                            agentSessionManager.saveSession();
+                        }
                         
-                        const summaryLines = [
-                            `Command: ${action.content}`,
-                            'Output:',
-                            ...(result.output ? result.output.split('\n') : ['No output']),
-                            `Success: ${result.success}`
-                        ];
-                        const resultMessage = summaryLines
-                            .map(line => `>> ${line}`)
-                            .join('\n');
+                        if (result.error === 'UNTERMINATED_HEREDOC') {
+                            agentSessionManager.addConversationMessage('system', result.output);
+                            agentSessionManager.saveSession();
+                        }
+                        
+                        const outputLines = (result.output || 'No output').split('\n');
+                        const outcome = result.success ? 'OUTPUT (SUCCESS)' : 'OUTPUT (FAILURE)';
+                        printBlock(outcome, outputLines);
+                        
+                        const resultMessage = commandExecutor.createSummaryPrompt(
+                          action.content,
+                          result.success,
+                          result.output,
+                          result.error
+                        );
                         agentSessionManager.addConversationMessage('system', resultMessage);
                         agentSessionManager.saveSession();
                     } catch (error) {

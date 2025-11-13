@@ -79,9 +79,10 @@ context.
 
 ### 4.2 Command execution
 
--   Agents can output actionable instructions marked with a special
-    prefix (e.g., `>> command`).
--   Such instructions are validated, executed safely, and logged with
+-   Agents output actionable instructions by wrapping them between `>>>`
+    and `<<<` markers.
+-   Anything outside those markers remains conversational context.
+-   Marked instructions are validated, executed safely, and logged with
     success/failure states.
 -   Forbidden commands are filtered to prevent destructive operations.
 

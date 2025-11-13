@@ -18,6 +18,37 @@ const getFlagValue = (flag) => {
     return undefined;
 };
 
+const getAgentTrailingInput = () => {
+    const agentFlagIndex = args.findIndex(arg => arg === '--agent' || arg.startsWith('--agent='));
+    if (agentFlagIndex === -1) {
+        return '';
+    }
+
+    let startIndex;
+    if (args[agentFlagIndex].includes('=')) {
+        // Format --agent=ProjectLeader, trailing input starts right after this arg
+        startIndex = agentFlagIndex + 1;
+    } else {
+        // Format --agent ProjectLeader <input?>
+        startIndex = agentFlagIndex + 2;
+    }
+
+    if (startIndex >= args.length) {
+        return '';
+    }
+
+    const collected = [];
+    for (let i = startIndex; i < args.length; i++) {
+        const token = args[i];
+        if (token.startsWith('--')) {
+            break;
+        }
+        collected.push(token);
+    }
+
+    return collected.join(' ').trim();
+};
+
 const main = async () => {
     const interruptController = new InterruptController();
     interruptController.start();
@@ -35,7 +66,8 @@ const main = async () => {
         }
 
         const workingDirectory = getFlagValue('--working-directory') || process.cwd();
-        const inputMsg = getFlagValue('--input') || '';
+        const fallbackInput = getAgentTrailingInput();
+        const inputMsg = getFlagValue('--input') || fallbackInput || '';
         const depth = parseInt(getFlagValue('--depth') || '0', 10);
         const configPath = getFlagValue('--config') || './.deepseek_config.json';
         const parentSessionId = getFlagValue('--parent-session') || null;

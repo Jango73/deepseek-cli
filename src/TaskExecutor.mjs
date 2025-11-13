@@ -49,11 +49,31 @@ export class TaskExecutor {
       try {
         console.log("");
 
-        const response = await this.conversationManager.askDeepSeek(
-          currentPrompt, 
-          this.sessionManager.workingDirectory, 
-          systemPrompt
-        );
+        const apiAbortController = cliInstance?.createAIAbortController
+          ? cliInstance.createAIAbortController()
+          : null;
+        let response;
+        try {
+          response = await this.conversationManager.askDeepSeek(
+            currentPrompt, 
+            this.sessionManager.workingDirectory, 
+            systemPrompt,
+            apiAbortController
+          );
+        } catch (error) {
+          if (apiAbortController && typeof cliInstance?.releaseAIAbortController === 'function') {
+            cliInstance.releaseAIAbortController(apiAbortController);
+          }
+          if (error.name === 'AbortError' && (this.isInterrupted || cliInstance?.isInterrupted)) {
+            console.log("🛑 Interruption confirmed - stopping task...");
+            shouldBreak = true;
+            break;
+          }
+          throw error;
+        }
+        if (apiAbortController && typeof cliInstance?.releaseAIAbortController === 'function') {
+          cliInstance.releaseAIAbortController(apiAbortController);
+        }
 
         const sizeStatusAfterAPI = this.conversationManager.checkConversationSize();
         if (sizeStatusAfterAPI === "needs_compact") {
@@ -67,6 +87,12 @@ export class TaskExecutor {
         }
 
         const parsedResponse = this.commandExecutor.parseAIResponse(response);
+        if (parsedResponse.diagnostics?.unclosedBlocks?.length) {
+          for (const block of parsedResponse.diagnostics.unclosedBlocks) {
+            const preview = block.preview.replace(/\s+/g, ' ').trim();
+            console.warn(`⚠️ Incomplete command block detected (missing <<<). Preview: ${preview}`);
+          }
+        }
         const actions = parsedResponse.actions || [];
 
         if (actions.length === 0) {
@@ -118,12 +144,33 @@ export class TaskExecutor {
             break;
           }
 
-          const display = action.content.includes('\n')
-            ? `\n${action.content}`
-            : ` ${action.content}`;
-          console.log(`🔧 Executing:${display}`);
+          const commandLines = action.content.split('\n');
+          const printBlock = (title, lines) => {
+            console.log(`========== ${title} ==========`); // header
+            for (const line of lines) {
+              console.log(line);
+            }
+            console.log(`======== END ${title} ========`);
+          };
+
+          printBlock('COMMAND', ['>>>', ...commandLines, '<<<']);
           const result = await this.commandExecutor.executeCommand(action.content);
           executedSomething = true;
+
+          if (result.error === 'COMMAND_TOO_LONG') {
+            const maxLines = this.commandExecutor.constructor?.MAX_COMMAND_LINES || 20;
+            const warningMessage = [
+              `Your command contained ${result.lineCount} lines. The maximum allowed is ${maxLines}.`,
+              'Split large scripts into multiple >>>/<<< blocks (each ≤20 lines) before resubmitting.'
+            ].join(' ');
+            this.sessionManager.addConversationMessage('system', warningMessage);
+            this.sessionManager.saveSession();
+          }
+
+          if (result.error === 'UNTERMINATED_HEREDOC') {
+            this.sessionManager.addConversationMessage('system', result.output);
+            this.sessionManager.saveSession();
+          }
 
           if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted) || result.interrupted) {
             console.log("🛑 Interruption confirmed - stopping task...");
@@ -136,6 +183,10 @@ export class TaskExecutor {
             success: result.success,
             output: result.output
           });
+
+          const outputLines = (result.output || 'No output').split('\n');
+          const outcome = result.success ? 'OUTPUT (SUCCESS)' : 'OUTPUT (FAILURE)';
+          printBlock(outcome, outputLines);
 
           lastSummaryPrompt = this.commandExecutor.createSummaryPrompt(
             action.content, 
@@ -152,7 +203,7 @@ export class TaskExecutor {
         if (executedSomething && lastSummaryPrompt) {
           currentPrompt = lastSummaryPrompt;
         } else if (!executedSomething) {
-          currentPrompt = "Give me a valid shell command to execute";
+          currentPrompt = "Give me a valid shell command wrapped between >>> and <<<";
         } else if (!lastSummaryPrompt) {
           currentPrompt = "Command handled. Continue with next instruction.";
         }

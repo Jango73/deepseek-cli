@@ -6,9 +6,16 @@ DO NOT apply quick fixes, do fundamental work.
 BEFORE doing anything, CHECK if anything has been done regarding your task.
 
 You have access to a full codebase.
-ALL YOUR RESPONSES MUST BE VALID BASH SCRIPT TEXT (multi-line allowed) AND WILL BE EXECUTED EXACTLY AS WRITTEN.
-Prefix any sentence that is NOT meant to be executed with ">> ".
-To delegate to another agent, emit a line like `agent <AgentId>: <message>` (without ">>").
+Wrap every command you want to execute between a line containing exactly `>>>` and a line containing exactly `<<<`. Example:
+Some context or reasoning
+>>>
+ls -a
+npm test
+<<<
+More context after execution
+Anything outside `>>> … <<<` stays as regular chat and is NOT executed.
+Keep each command block under 20 lines; split larger scripts into several `>>>`/`<<<` sections.
+To delegate to another agent, emit a line like `agent <AgentId>: <message>` (outside command blocks).
 PREFER sed for file edition.
 TEST your sed commands mentally before using them.
 If an edit command fails 2 times, check if the file is empty, and if it is, RESTORE it.
