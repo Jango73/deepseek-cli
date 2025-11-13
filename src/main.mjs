@@ -1,23 +1,45 @@
 import { DeepSeekCLI } from './DeepSeekCLI.mjs';
 import { runAgent } from './AgentRunner.mjs';
 import { SessionManager } from './SessionManager.mjs';
+import { InterruptController } from './InterruptController.mjs';
+
+const args = process.argv.slice(2);
+
+const hasFlag = (flag) => args.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
+const getFlagValue = (flag) => {
+    const inline = args.find((arg) => arg.startsWith(`${flag}=`));
+    if (inline) {
+        return inline.substring(flag.length + 1);
+    }
+    const idx = args.indexOf(flag);
+    if (idx > -1) {
+        return args[idx + 1];
+    }
+    return undefined;
+};
 
 const main = async () => {
-    const args = process.argv.slice(2);
+    const interruptController = new InterruptController();
+    interruptController.start();
 
-    const agentIdx = args.indexOf('--agent');
-    if (agentIdx > -1) {
+    const nonInteractive = hasFlag('--non-interactive');
+    const agentMode = hasFlag('--agent');
+    let agentInterrupted = false;
+
+    if (agentMode) {
         // Mode agent - ne pas setup de signal handlers
-        const agentId = args[agentIdx + 1];
-        const inputIdx = args.indexOf('--input');
-        const inputMsg = inputIdx > -1 ? args[inputIdx + 1] : '';
-        const depthIdx = args.indexOf('--depth');
-        const depth = depthIdx > -1 ? parseInt(args[depthIdx + 1]) : 0;
-        const configIdx = args.indexOf('--config');
-        const configPath = configIdx > -1 ? args[configIdx + 1] : './.deepseek_config.json';
-        const parentSessionIdx = args.indexOf('--parent-session');
-        const parentSessionId = parentSessionIdx > -1 ? args[parentSessionIdx + 1] : null;
-        const apiKey = process.env.DEEPSEEK_API_KEY;
+        const agentId = getFlagValue('--agent');
+        if (!agentId) {
+            console.error('Missing value for --agent');
+            process.exit(1);
+        }
+
+        const workingDirectory = getFlagValue('--working-directory') || process.cwd();
+        const inputMsg = getFlagValue('--input') || '';
+        const depth = parseInt(getFlagValue('--depth') || '0', 10);
+        const configPath = getFlagValue('--config') || './.deepseek_config.json';
+        const parentSessionId = getFlagValue('--parent-session') || null;
+        const apiKey = getFlagValue('--api-key') || process.env.DEEPSEEK_API_KEY;
 
         if (!apiKey) {
             console.error('Missing DEEPSEEK_API_KEY');
@@ -26,22 +48,42 @@ const main = async () => {
 
         let parentSessionManager = null;
         if (parentSessionId) {
-            parentSessionManager = new SessionManager(process.cwd());
+            parentSessionManager = new SessionManager(workingDirectory);
         }
 
-        await runAgent(agentId, inputMsg, { 
-            configPath, 
-            depth, 
-            apiKey, 
-            parentSessionManager 
-        });
-        process.exit(0);
+        try {
+            await runAgent(agentId, inputMsg, {
+                configPath,
+                depth,
+                apiKey,
+                parentSessionManager,
+                workingDirectory,
+                interruptController
+            });
+        } catch (error) {
+            if (error.message === 'INTERRUPTED_BY_USER') {
+                agentInterrupted = true;
+            } else {
+                interruptController.pause();
+                throw error;
+            }
+        }
+
+        if (nonInteractive) {
+            interruptController.pause();
+            process.exit(agentInterrupted ? 130 : 0);
+        }
+
+        if (agentInterrupted) {
+            console.log('↩️ Agent interrupted. Back to the interactive CLI.');
+        } else {
+            console.log('✅ Agent completed. You can continue from the CLI.');
+        }
     }
 
     // Handle interactive mode - SEULEMENT ici setup les handlers
-    const nonInteractive = args.includes('--non-interactive');
-    const workingDir = args[0];
-    const apiKey = process.env.DEEPSEEK_API_KEY || args[1];
+    const workingDir = getFlagValue('--working-directory') || process.cwd();
+    const apiKey = getFlagValue('--api-key') || process.env.DEEPSEEK_API_KEY;
 
     if (!workingDir) {
         console.log('Missing working directory');
@@ -59,10 +101,12 @@ const main = async () => {
         process.exit(0);
     });
 
-    const cli = new DeepSeekCLI(apiKey, workingDir);
+    const cli = new DeepSeekCLI(apiKey, workingDir, interruptController);
 
     if (!nonInteractive) {
         await cli.startInteractiveSession();
+    } else {
+        interruptController.pause();
     }
 };
 

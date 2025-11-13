@@ -9,9 +9,10 @@ import { CommandExecutor } from './CommandExecutor.mjs';
 import { ConversationManager } from './ConversationManager.mjs';
 import { TaskExecutor } from './TaskExecutor.mjs';
 import { runAgent } from './AgentRunner.mjs';
+import { InterruptController } from './InterruptController.mjs';
 
 export class DeepSeekCLI {
-  constructor(apiKey, workingDir) {
+  constructor(apiKey, workingDir, interruptController = null) {
     this.scriptDirectory = process.cwd();
     this.workingDirectory = workingDir;
     this.configFile = `${this.scriptDirectory}/.deepseek_config.json`;
@@ -35,6 +36,9 @@ export class DeepSeekCLI {
     this.deepSeekAPI = new DeepSeekAPI(this.apiKey);
     this.forbiddenCommands = this.loadForbiddenCommands(this.config.forbiddenCommands);
     this.agentStack = [];
+    this.interruptController = interruptController || new InterruptController();
+    this.interruptController.start();
+    this.interruptCleanup = this.interruptController.onInterrupt(() => this.handleInterruptSignal());
 
     try {
       const rootContext = this.createAgentContext(this.defaultAgentId, { isRoot: true });
@@ -50,8 +54,6 @@ export class DeepSeekCLI {
       terminal: false,
       output: process.stdout
     });
-    
-    this.setupKeypressListener();
   }
 
   loadConfig() {
@@ -214,40 +216,34 @@ export class DeepSeekCLI {
     await this.popAgentContext({ auto: true });
   }
 
-  setupKeypressListener() {
-      if (process.stdin.isTTY) {
-          process.stdin.setRawMode(true);
-      }
-      process.stdin.setEncoding('utf8');
-      
-      this.keypressHandler = (key) => {
-          if (key === '\u001b') {
-              if (!this.isInterrupted) {
-                  this.isInterrupted = true;
-                  console.log('\n🛑 INTERRUPTION REQUESTED - Stopping current operation...');
-                  this.commandExecutor.killCurrentProcess();
-                  this.taskExecutor.interrupt();
-                  // Do NOT force app exit - only stop current operation
-              }
-          }
-      };
-      
-      process.stdin.on('data', this.keypressHandler);
+  handleInterruptSignal() {
+    if (this.isInterrupted) {
+      return;
+    }
+    this.isInterrupted = true;
+    console.log('\n⏹️ Interruption requested. Stopping current action…');
+    if (this.commandExecutor) {
+      this.commandExecutor.killCurrentProcess();
+    }
+    if (this.taskExecutor) {
+      this.taskExecutor.interrupt();
+    }
   }
 
-  removeKeypressListener() {
-    process.stdin.removeListener('data', this.keypressHandler);
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(false);
+  cleanupInterruptHandling() {
+    if (this.interruptCleanup) {
+      this.interruptCleanup();
+      this.interruptCleanup = null;
     }
   }
 
   async askUserPrompt() {
     return new Promise((resolve) => {
-      this.removeKeypressListener();
+      this.interruptController.pause();
+      this.interruptController.clearInterrupt();
       const agentLabel = this.currentAgentId || 'Agent';
       this.rl.question(`\n[${agentLabel}]> `, (answer) => {
-        this.setupKeypressListener();
+        this.interruptController.resume();
         resolve(answer.trim());
       });
     });
@@ -323,11 +319,11 @@ Interruption:
   }
 
   async handleClearAll() {
-    this.removeKeypressListener();
-    
     return new Promise((resolve) => {
+      this.interruptController.pause();
+      this.interruptController.clearInterrupt();
       this.rl.question('⚠️  Are you sure you want to delete ALL sessions and archives? (yes/no): ', (answer) => {
-        this.setupKeypressListener();
+        this.interruptController.resume();
         
         if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
           this.sessionManager.clearAllSessions();
@@ -416,7 +412,9 @@ Interruption:
         configPath: this.configFile,
         depth,
         apiKey: this.apiKey,
-        parentSessionManager: this.sessionManager
+        parentSessionManager: this.sessionManager,
+        workingDirectory: this.workingDirectory,
+        interruptController: this.interruptController
       });
       console.log(`✅ Agent "${agentId}" completed`);
     } catch (error) {
@@ -451,93 +449,100 @@ Interruption:
     console.log('Press ESC at any time to interrupt current task');
     console.log(`🧠 Active agent: ${this.currentAgentId}`);
 
-    while (true) {
-      try {
-        this.isInterrupted = false;
-        
-        const userPrompt = await this.askUserPrompt();
-        
-        if (!userPrompt) {
-          continue;
+    try {
+      while (true) {
+        try {
+          this.isInterrupted = false;
+          this.interruptController.clearInterrupt();
+          
+          const userPrompt = await this.askUserPrompt();
+          
+          if (!userPrompt) {
+            continue;
+          }
+
+          // Handle commands with parameters
+          if (userPrompt.startsWith('/continue ')) {
+            const sessionId = userPrompt.substring(10).trim();
+            await this.handleContinue(sessionId);
+            continue;
+          }
+
+          if (userPrompt.startsWith('/agent ')) {
+              const parts = userPrompt.split(' ');
+              const agentId = parts[1];
+              const rest = userPrompt.substring(userPrompt.indexOf(agentId) + agentId.length).trim();
+              const message = rest ? rest.replace(/^"|"$/g, '') : null;
+
+              if (!agentId) {
+                  console.log('Usage: /agent <agentId> "<message optional>"');
+                  continue;
+              }
+
+              await this.launchAgentFromUserCommand(agentId, message);
+              continue;
+          }
+
+          switch (userPrompt.toLowerCase()) {
+            case '/quit':
+            case '/exit':
+              this.cleanupInterruptHandling();
+              this.interruptController.pause();
+              this.rl.close();
+              return;
+
+            case '/clear':
+              await this.handleClear();
+              continue;
+
+            case '/clear-all':
+              await this.handleClearAll();
+              continue;
+
+            case '/pop':
+              await this.handlePopAgent();
+              continue;
+
+            case '/help':
+              this.showHelp();
+              continue;
+
+            case '/forbidden':
+              this.showForbiddenCommands();
+              continue;
+
+            case '/history':
+              this.showHistory();
+              continue;
+
+            case '/compact':
+              await this.conversationManager.compactConversationWithAI();
+              continue;
+
+            case '/status':
+              this.sessionManager.showSessionStatus();
+              this.conversationManager.checkConversationSize();
+              continue;
+
+            case '/archives':
+              this.showArchives();
+              continue;
+
+            case '/continue':
+              await this.handleContinue();
+              continue;
+
+            default:
+              await this.taskExecutor.executeTaskLoop(userPrompt, this.systemPrompt, this);
+          }
+
+        } catch (error) {
+          console.error(`❌ Session error: ${error.message}`);
         }
-
-        // Handle commands with parameters
-        if (userPrompt.startsWith('/continue ')) {
-          const sessionId = userPrompt.substring(10).trim();
-          await this.handleContinue(sessionId);
-          continue;
-        }
-
-        if (userPrompt.startsWith('/agent ')) {
-            const parts = userPrompt.split(' ');
-            const agentId = parts[1];
-            const rest = userPrompt.substring(userPrompt.indexOf(agentId) + agentId.length).trim();
-            const message = rest ? rest.replace(/^"|"$/g, '') : null;
-
-            if (!agentId) {
-                console.log('Usage: /agent <agentId> "<message optional>"');
-                continue;
-            }
-
-            await this.launchAgentFromUserCommand(agentId, message);
-            continue;
-        }
-
-        switch (userPrompt.toLowerCase()) {
-          case '/quit':
-          case '/exit':
-            this.removeKeypressListener();
-            this.rl.close();
-            return;
-
-          case '/clear':
-            await this.handleClear();
-            continue;
-
-          case '/clear-all':
-            await this.handleClearAll();
-            continue;
-
-          case '/pop':
-            await this.handlePopAgent();
-            continue;
-
-          case '/help':
-            this.showHelp();
-            continue;
-
-          case '/forbidden':
-            this.showForbiddenCommands();
-            continue;
-
-          case '/history':
-            this.showHistory();
-            continue;
-
-          case '/compact':
-            await this.conversationManager.compactConversationWithAI();
-            continue;
-
-          case '/status':
-            this.sessionManager.showSessionStatus();
-            this.conversationManager.checkConversationSize();
-            continue;
-
-          case '/archives':
-            this.showArchives();
-            continue;
-
-          case '/continue':
-            await this.handleContinue();
-            continue;
-
-          default:
-            await this.taskExecutor.executeTaskLoop(userPrompt, this.systemPrompt, this);
-        }
-
-      } catch (error) {
-        console.error(`❌ Session error: ${error.message}`);
       }
+    } finally {
+      this.cleanupInterruptHandling();
+      this.interruptController.pause();
     }
   }
 }

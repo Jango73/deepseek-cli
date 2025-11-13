@@ -25,12 +25,25 @@ DEEPSEEK_API_KEY=your_deepseek_api_key_here
 ### Method 2: Command Line Argument
 Pass the API key directly when running the CLI:
 ```bash
-# First argument = workspace directory
-# Remaining arguments are forwarded to the CLI (API key, flags, etc.)
-./deepseek.sh /path/to/your/project your_api_key_here
+# Explicit workspace selection + API key
+./deepseek.sh --working-directory /path/to/your/project --api-key your_deepseek_api_key_here
+
+# Run a one-shot agent and exit when it finishes or is interrupted
+./deepseek.sh --working-directory /path/to/your/project --agent ProjectLeader "Specs are in Functional-Specs.md" --non-interactive
+
+# Omit --non-interactive to keep the CLI open after the agent run
+./deepseek.sh --working-directory /path/to/your/project --agent ProjectLeader "Specs are in Functional-Specs.md"
 ```
 
-If you omit the first argument, the script uses the directory from which you launched it as the agent workspace. This lets you invoke the CLI from anywhere while pointing it to a different project tree (e.g., `./deepseek.sh samples/gallery`).
+If you omit `--working-directory`, the script uses the directory from which you launched it. This lets you do things like:
+
+```bash
+# Use current directory but still pass flags
+./deepseek.sh --agent ProjectLeader "Specs are in Functional-Specs.md"
+
+# Target another directory explicitly
+./deepseek.sh --working-directory samples/gallery --agent ProjectLeader "Specs are in Functional-Specs.md"
+```
 
 ### Getting Your API Key
 1. Visit [DeepSeek Platform](https://platform.deepseek.com/)

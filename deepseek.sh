@@ -37,8 +37,49 @@ if [ ! -f "$SCRIPT_FILE" ]; then
 fi
 
 # Determine target working directory (default to where script was launched)
-TARGET_DIR="${1:-$ORIGINAL_DIR}"
-shift || true
+TARGET_DIR="$ORIGINAL_DIR"
+FORWARDED_ARGS=()
+API_KEY="${DEEPSEEK_API_KEY:-}"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --working-directory)
+            if [ -z "${2:-}" ]; then
+                echo "[error] --working-directory requires a path argument"
+                exit 1
+            fi
+            TARGET_DIR="$2"
+            shift 2
+            ;;
+        --working-directory=*)
+            TARGET_DIR="${1#*=}"
+            shift
+            ;;
+        --api-key)
+            if [ -z "${2:-}" ]; then
+                echo "[error] --api-key requires a value"
+                exit 1
+            fi
+            API_KEY="$2"
+            shift 2
+            ;;
+        --api-key=*)
+            API_KEY="${1#*=}"
+            shift
+            ;;
+        *)
+            FORWARDED_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+export DEEPSEEK_API_KEY="$API_KEY"
+
+FORWARDED_ARGS+=(--working-directory "$TARGET_DIR")
+if [ -n "$API_KEY" ]; then
+    FORWARDED_ARGS+=(--api-key "$API_KEY")
+fi
 
 echo "[run] Starting deepseek CLI with workspace: $TARGET_DIR"
-exec node "$SCRIPT_FILE" "$TARGET_DIR" "$@"
+exec node "$SCRIPT_FILE" "${FORWARDED_ARGS[@]}"

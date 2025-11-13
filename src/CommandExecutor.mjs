@@ -10,7 +10,7 @@ export class CommandExecutor {
   isCommandForbidden(command) {
     const cleanCommand = command.split('#')[0].trim().toLowerCase();
     return Array.from(this.forbiddenCommands).some(forbidden => 
-      cleanCommand === forbidden || cleanCommand.startsWith(forbidden + " ")
+      cleanCommand === forbidden || cleanCommand.startsWith(forbidden)
     );
   }
 
@@ -105,63 +105,84 @@ export class CommandExecutor {
   }
 
   shouldContinueCommandBlock(line, currentCommandLines) {
+    const heredocMarker = this.getCurrentHeredocMarker(currentCommandLines);
+    if (heredocMarker) {
+      const lastLine = currentCommandLines[currentCommandLines.length - 1];
+      return lastLine.trim() !== heredocMarker;
+    }
+
     if (!line) return false;
     if (this.isLikelyComment(line)) return false;
     
     // Continue si la ligne se termine par un backslash (continuation)
-    if (line.endsWith('\\')) return true;
-    
-    // Vérifier si nous sommes dans un contexte heredoc
-    const heredocMarker = this.getCurrentHeredocMarker(currentCommandLines);
-    if (heredocMarker && line.trim() !== heredocMarker) {
-      return true; // On est toujours dans le heredoc
-    }
+    if (line.trim().endsWith('\\')) return true;
     
     return false;
   }
 
   separateCommentsAndCommands(lines) {
-    let commentLines = [];
-    let commandLines = [];
-    let inCommandBlock = false;
-    let inHeredoc = false;
-    let heredocMarker = null;
+    const commentLines = [];
+    const commands = [];
+    let currentCommandLines = [];
+    let collectingCommand = false;
+
+    const flushCommand = () => {
+      if (currentCommandLines.length === 0) {
+        return;
+      }
+      commands.push(this.reconstructMultilineCommand(currentCommandLines));
+      currentCommandLines = [];
+      collectingCommand = false;
+    };
 
     for (const line of lines) {
       const trimmedLine = line.trim();
-      
+
       if (trimmedLine.startsWith('>>')) {
-        inCommandBlock = true;
+        if (collectingCommand) {
+          flushCommand();
+        }
+
         const commandContent = trimmedLine.substring(2).trim();
-        if (commandContent) commandLines.push(commandContent);
-        
-        // Vérifier si cette commande commence un heredoc
-        if (commandContent.includes('<<')) {
-          const match = commandContent.match(/<<\s*['"]?(\w+)['"]?/);
-          if (match) {
-            inHeredoc = true;
-            heredocMarker = match[1];
-          }
+        if (!commandContent) {
+          continue;
         }
-      } 
-      else if (inCommandBlock && (this.shouldContinueCommandBlock(trimmedLine, commandLines) || inHeredoc)) {
-        commandLines.push(trimmedLine);
-        
-        // Vérifier si c'est la fin du heredoc
-        if (inHeredoc && trimmedLine === heredocMarker) {
-          inHeredoc = false;
-          heredocMarker = null;
+
+        currentCommandLines.push(commandContent);
+        const needsContinuation = this.shouldContinueCommandBlock(
+          commandContent,
+          currentCommandLines
+        );
+
+        if (!needsContinuation) {
+          flushCommand();
+        } else {
+          collectingCommand = true;
         }
+
+        continue;
       }
-      else {
-        inCommandBlock = false;
-        inHeredoc = false;
-        heredocMarker = null;
-        commentLines.push(line);
+
+      if (collectingCommand) {
+        currentCommandLines.push(line);
+        const needsContinuation = this.shouldContinueCommandBlock(
+          line,
+          currentCommandLines
+        );
+        if (!needsContinuation) {
+          flushCommand();
+        }
+        continue;
       }
+
+      commentLines.push(line);
     }
 
-    return { commentLines, commandLines };
+    if (collectingCommand) {
+      flushCommand();
+    }
+
+    return { commentLines, commands };
   }
 
   cleanCommentLines(commentLines) {
@@ -175,57 +196,58 @@ export class CommandExecutor {
   reconstructMultilineCommand(commandLines) {
     if (commandLines.length === 0) return null;
     
-    // Reconstruire le commande en gérant les heredocs
     let reconstructed = '';
-    let inHeredoc = false;
-    let heredocMarker = null;
     
     for (let i = 0; i < commandLines.length; i++) {
-      const line = commandLines[i];
-      
       if (i > 0) {
         reconstructed += '\n';
       }
-      reconstructed += line;
-      
-      // Détecter le début d'un heredoc
-      if (!inHeredoc && line.includes('<<')) {
-        const match = line.match(/<<\s*['"]?(\w+)['"]?/);
-        if (match) {
-          inHeredoc = true;
-          heredocMarker = match[1];
-        }
-      }
-      
-      // Détecter la fin d'un heredoc
-      if (inHeredoc && line.trim() === heredocMarker) {
-        inHeredoc = false;
-        heredocMarker = null;
-      }
+      reconstructed += commandLines[i];
     }
     
     return reconstructed;
   }
 
   parseAIResponse(response) {
-    const lines = response.split('\n').map(line => line.trim());
+    const lines = response.split('\n');
     
-    const { commentLines, commandLines } = this.separateCommentsAndCommands(lines);
+    const { commentLines, commands } = this.separateCommentsAndCommands(lines);
     const cleanComment = this.cleanCommentLines(commentLines);
-    const fullCommand = this.reconstructMultilineCommand(commandLines);
-    
-    if (!fullCommand) {
+    if (!commands.length) {
+      const trimmedResponse = response.trim();
+      if (trimmedResponse.length === 0) {
+        return {
+          type: 'comment',
+          content: cleanComment,
+          command: null,
+          fullResponse: response
+        };
+      }
+      
+      if (trimmedResponse.includes('\n')) {
+        return {
+          type: 'comment',
+          content: cleanComment,
+          command: null,
+          fullResponse: response
+        };
+      }
+
       return {
-        type: 'comment',
-        content: cleanComment,
-        command: null,
+        type: 'command',
+        command: trimmedResponse,
+        commands: [trimmedResponse],
+        preComment: null,
         fullResponse: response
       };
     }
     
+    const combinedCommand = commands.join('\n');
+    
     return {
       type: 'command',
-      command: fullCommand,
+      command: combinedCommand,
+      commands,
       preComment: cleanComment || null,
       fullResponse: response
     };

@@ -87,48 +87,73 @@ export class TaskExecutor {
           });
         }
 
-        if (!parsedResponse.command || parsedResponse.command.length < 2) {
+        const commandsToRun = (parsedResponse.commands && parsedResponse.commands.length > 0)
+          ? parsedResponse.commands
+          : (parsedResponse.command ? [parsedResponse.command] : []);
+        const normalizedCommands = commandsToRun
+          .map(cmd => (cmd || '').trim())
+          .filter(cmd => cmd.length > 0);
+
+        if (normalizedCommands.length === 0) {
           console.log('❌ No valid command found');
           currentPrompt = "Give me a valid shell command to execute";
           iteration++;
           continue;
         }
 
-        if (cliInstance && typeof cliInstance.handleSpecialCommand === 'function') {
-          const handled = await cliInstance.handleSpecialCommand(parsedResponse.command);
-          if (handled) {
-            currentPrompt = "Agent command handled. Continue with the next instruction.";
-            iteration++;
-            continue;
+        let lastSummaryPrompt = null;
+        let executedSomething = false;
+
+        for (const singleCommand of normalizedCommands) {
+          if (cliInstance && typeof cliInstance.handleSpecialCommand === 'function') {
+            const handled = await cliInstance.handleSpecialCommand(singleCommand);
+            if (handled) {
+              executedSomething = true;
+              lastSummaryPrompt = "Agent command handled. Continue with the next instruction.";
+              continue;
+            }
           }
+
+          // Handle "pause" command by breaking out of the loop
+          if (singleCommand.toLowerCase() === 'pause' || singleCommand.toLowerCase() === 'exit') {
+            shouldBreak = true;
+            break;
+          }
+
+          const result = await this.commandExecutor.executeCommand(singleCommand);
+          executedSomething = true;
+
+          if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted) || result.interrupted) {
+            console.log("🛑 Interruption confirmed - stopping task...");
+            shouldBreak = true;
+            break;
+          }
+
+          this.sessionManager.addHistoryEntry({
+            command: singleCommand,
+            success: result.success,
+            output: result.output
+          });
+
+          lastSummaryPrompt = this.commandExecutor.createSummaryPrompt(
+            singleCommand, 
+            result.success, 
+            result.output, 
+            result.error
+          );
         }
 
-        // Handle "pause" command by breaking out of the loop
-        if (parsedResponse.command.toLowerCase() === 'pause' || parsedResponse.command.toLowerCase() === 'exit') {
-          shouldBreak = true;
+        if (shouldBreak) {
           break;
         }
 
-        const result = await this.commandExecutor.executeCommand(parsedResponse.command);
-
-        if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted) || result.interrupted) {
-          console.log("🛑 Interruption confirmed - stopping task...");
-          shouldBreak = true;
-          break;
+        if (executedSomething && lastSummaryPrompt) {
+          currentPrompt = lastSummaryPrompt;
+        } else if (!executedSomething) {
+          currentPrompt = "Give me a valid shell command to execute";
+        } else if (!lastSummaryPrompt) {
+          currentPrompt = "Command handled. Continue with next instruction.";
         }
-
-        this.sessionManager.addHistoryEntry({
-          command: parsedResponse.command,
-          success: result.success,
-          output: result.output
-        });
-
-        currentPrompt = this.commandExecutor.createSummaryPrompt(
-          parsedResponse.command, 
-          result.success, 
-          result.output, 
-          result.error
-        );
 
         const sizeStatusAfterCmd = this.conversationManager.checkConversationSize();
         if (sizeStatusAfterCmd === "needs_compact") {
@@ -159,4 +184,3 @@ export class TaskExecutor {
     }
   }
 }
-

@@ -21,7 +21,8 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
         depth = 0,
         apiKey,
         parentSessionManager = null,
-        workingDirectory = null
+        workingDirectory = null,
+        interruptController = null
     } = opts;
 
     if (!apiKey) throw new Error('Missing API key in runAgent() options');
@@ -44,6 +45,16 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
         : `${agentId}_${Date.now().toString(36)}`;
     const agentSessionManager = new SessionManager(agentWorkingDir, { sessionNamespace });
     const commandExecutor = new CommandExecutor(agentWorkingDir, []);
+    let interrupted = false;
+    const unregisterInterrupt = interruptController
+      ? interruptController.onInterrupt(() => {
+          if (interrupted) return;
+          interrupted = true;
+          const prefix = depth > 0 ? '│ '.repeat(depth) : '';
+          process.stdout.write(`${prefix}\n⏹️ Interruption requested. Stopping "${agentId}"…\n`);
+          commandExecutor.killCurrentProcess();
+        })
+      : null;
     
     const parentSessionId = parentSessionManager?.currentSessionId || 'main';
     agentSessionManager.currentSessionId = `${parentSessionId}_agent_${agentId}_${Date.now().toString(36)}`;
@@ -63,10 +74,18 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
 
     agentStack.push(agentId);
 
+    const checkInterruption = () => {
+      if (interrupted || interruptController?.isInterrupted()) {
+        throw new Error('INTERRUPTED_BY_USER');
+      }
+    };
+
     try {
         while (true) {
+            checkInterruption();
             const messages = agentSessionManager.getConversationHistory();
             const response = await askDeepseek(messages, apiKey);
+            checkInterruption();
             
             const prefix = depth > 0 ? '│ '.repeat(depth) : '';
             process.stdout.write(`${prefix}${response.trim()}\n`);
@@ -95,8 +114,11 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                         configPath: resolvedConfigPath,
                         depth: depth + 1,
                         apiKey,
-                        parentSessionManager: agentSessionManager
+                        parentSessionManager: agentSessionManager,
+                        workingDirectory: agentWorkingDir,
+                        interruptController
                     });
+                    checkInterruption();
                     continue;
                 }
                 
@@ -109,6 +131,7 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                             process.stdout.write(`${prefix}🔧 Executing: ${command}\n`);
                             
                             const result = await commandExecutor.executeCommand(command);
+                            checkInterruption();
                             
                             process.stdout.write(`${prefix}${result.output}\n`);
                             
@@ -123,7 +146,16 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                 }
             }
         }
+    } catch (error) {
+        if (error.message === 'INTERRUPTED_BY_USER') {
+            const prefix = depth > 0 ? '│ '.repeat(depth) : '';
+            process.stdout.write(`${prefix}⏹️ Agent "${agentId}" interrupted.\n`);
+            await agentSessionManager.archiveCurrentSession();
+        }
+        throw error;
     } finally {
+        unregisterInterrupt?.();
+        interruptController?.clearInterrupt();
         agentStack.pop();
     }
 }
