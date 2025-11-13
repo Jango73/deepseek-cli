@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# List all .mjs files in the current directory and write their contents
+# List all .mjs files in the source directory and write their contents
 # into code.txt, each wrapped in a Markdown code block labeled with the filename.
 
 set -eu
@@ -9,12 +9,19 @@ OUTPUT_FILE="code.txt"
 # Start fresh
 : > "$OUTPUT_FILE"
 
-echo "Scanning current directory for .mjs files..." >&2
+SOURCE_DIR="./src"
+
+if [ ! -d "$SOURCE_DIR" ]; then
+    echo "Source directory ${SOURCE_DIR} not found." >&2
+    exit 1
+fi
+
+echo "Scanning ${SOURCE_DIR} for .mjs files..." >&2
 
 found=0
 
 # Portable glob-based loop (handles spaces in filenames)
-for f in ./*.mjs; do
+for f in "$SOURCE_DIR"/*.mjs; do
     # If the glob doesn't match, it remains literal; guard against that
     [ -e "$f" ] || break
 
@@ -34,7 +41,7 @@ for f in ./*.mjs; do
 done
 
 if [ "$found" -eq 0 ]; then
-    echo "No .mjs files found in the current directory." >&2
+    echo "No .mjs files found in ${SOURCE_DIR}." >&2
 else
     echo "Done. Output written to ${OUTPUT_FILE}." >&2
 fi

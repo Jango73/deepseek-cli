@@ -5,7 +5,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Path to the dashboard script (relative to script directory)
-SCRIPT_FILE="$SCRIPT_DIR/main.mjs"
+SCRIPT_FILE="$SCRIPT_DIR/src/main.mjs"
 
 # Required dependencies
 DEPS=()

@@ -1,4 +1,4 @@
 #!/bin/bash
 set -e
 
-exec node Test-Commands.mjs
+exec node src/Test-Commands.mjs
