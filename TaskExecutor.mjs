@@ -94,6 +94,15 @@ export class TaskExecutor {
           continue;
         }
 
+        if (cliInstance && typeof cliInstance.handleSpecialCommand === 'function') {
+          const handled = await cliInstance.handleSpecialCommand(parsedResponse.command);
+          if (handled) {
+            currentPrompt = "Agent command handled. Continue with the next instruction.";
+            iteration++;
+            continue;
+          }
+        }
+
         // Handle "pause" command by breaking out of the loop
         if (parsedResponse.command.toLowerCase() === 'pause' || parsedResponse.command.toLowerCase() === 'exit') {
           shouldBreak = true;
@@ -150,3 +159,4 @@ export class TaskExecutor {
     }
   }
 }
+

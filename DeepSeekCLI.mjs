@@ -2,6 +2,7 @@
 import dotenv from "dotenv";
 import readline from 'readline';
 import fs from 'fs';
+import path from 'path';
 import { DeepSeekAPI } from './DeepSeekAPI.mjs';
 import { SessionManager } from './SessionManager.mjs';
 import { CommandExecutor } from './CommandExecutor.mjs';
@@ -15,26 +16,34 @@ export class DeepSeekCLI {
     this.workingDirectory = workingDir;
     this.configFile = `${this.scriptDirectory}/.deepseek_config.json`;
     
-    const config = this.loadConfig();
+    this.config = this.loadConfig();
     
     if (apiKey) {
       this.apiKey = apiKey;
-    } else if (config.apiKey) {
-      this.apiKey = config.apiKey;
+    } else if (this.config.apiKey) {
+      this.apiKey = this.config.apiKey;
     } else {
       console.error('❌ No API key provided');
       process.exit(1);
     }
     
-    this.systemPrompt = config.systemPrompt;
+    this.defaultAgentId = process.env.DEEPSEEK_DEFAULT_AGENT || 'Generic';
+    this.agentDefinitions = this.config.agents || [];
     this.alwaysYes = false;
     this.isInterrupted = false;
 
     this.deepSeekAPI = new DeepSeekAPI(this.apiKey);
-    this.sessionManager = new SessionManager(this.workingDirectory);
-    this.commandExecutor = new CommandExecutor(this.workingDirectory, this.loadForbiddenCommands(config.forbiddenCommands));
-    this.conversationManager = new ConversationManager(this.sessionManager, this.deepSeekAPI);
-    this.taskExecutor = new TaskExecutor(this.conversationManager, this.commandExecutor, this.sessionManager);
+    this.forbiddenCommands = this.loadForbiddenCommands(this.config.forbiddenCommands);
+    this.agentStack = [];
+
+    try {
+      const rootContext = this.createAgentContext(this.defaultAgentId, { isRoot: true });
+      this.agentStack.push(rootContext);
+      this.applyContext(rootContext);
+    } catch (error) {
+      console.error(`❌ Failed to initialize default agent: ${error.message}`);
+      process.exit(1);
+    }
     
     this.rl = readline.createInterface({
       input: process.stdin,
@@ -42,7 +51,6 @@ export class DeepSeekCLI {
       output: process.stdout
     });
     
-    this.sessionManager.loadSession();
     this.setupKeypressListener();
   }
 
@@ -51,7 +59,8 @@ export class DeepSeekCLI {
     const config = {
       apiKey: null,
       forbiddenCommands: [],
-      systemPrompt: ''
+      systemPrompt: '',
+      agents: []
     };
     
     try {
@@ -62,6 +71,7 @@ export class DeepSeekCLI {
         config.apiKey = process.env.DEEPSEEK_API_KEY || fileConfig.apiKey || null;
         config.forbiddenCommands = fileConfig.forbiddenCommands || [];
         config.systemPrompt = fileConfig.systemPrompt ? fileConfig.systemPrompt.join('\n') : "";
+        config.agents = fileConfig.agents || [];
       } else {
         console.log('⚠️ Config file does not exist!');
       }
@@ -81,6 +91,127 @@ export class DeepSeekCLI {
     ];
     
     return [...defaultForbidden, ...configForbiddenCommands];
+  }
+
+  getAgentDefinition(agentId) {
+    const agent = this.agentDefinitions.find((definition) => definition.id === agentId);
+    if (!agent) {
+      throw new Error(`Agent "${agentId}" not found in configuration`);
+    }
+    return agent;
+  }
+
+  resolveAgentPrompt(agentDefinition) {
+    if (!agentDefinition.systemPrompt) {
+      return this.config.systemPrompt || '';
+    }
+
+    const promptPath = agentDefinition.systemPrompt.startsWith('.')
+      ? path.join(this.scriptDirectory, agentDefinition.systemPrompt)
+      : agentDefinition.systemPrompt;
+
+    try {
+      return fs.readFileSync(promptPath, 'utf8');
+    } catch (error) {
+      console.warn(`⚠️ Unable to load system prompt for ${agentDefinition.id}: ${error.message}`);
+      return this.config.systemPrompt || '';
+    }
+  }
+
+  createAgentContext(agentId, options = {}) {
+    const agentDefinition = this.getAgentDefinition(agentId);
+    const systemPrompt = this.resolveAgentPrompt(agentDefinition);
+    const isRoot = options.isRoot || false;
+    const sessionNamespace = isRoot ? null : `${agentId}_${Date.now().toString(36)}`;
+    const sessionManager = new SessionManager(this.workingDirectory, { sessionNamespace });
+    
+    if (isRoot) {
+      sessionManager.loadSession();
+    } else {
+      sessionManager.clearCurrentSession();
+    }
+
+    const commandExecutor = new CommandExecutor(this.workingDirectory, this.forbiddenCommands);
+    const conversationManager = new ConversationManager(sessionManager, this.deepSeekAPI);
+    const taskExecutor = new TaskExecutor(conversationManager, commandExecutor, sessionManager);
+
+    return {
+      agentId,
+      systemPrompt,
+      sessionManager,
+      commandExecutor,
+      conversationManager,
+      taskExecutor,
+      sessionNamespace,
+      autoPopOnComplete: false
+    };
+  }
+
+  applyContext(context) {
+    this.currentAgentId = context.agentId;
+    this.systemPrompt = context.systemPrompt;
+    this.sessionManager = context.sessionManager;
+    this.commandExecutor = context.commandExecutor;
+    this.conversationManager = context.conversationManager;
+    this.taskExecutor = context.taskExecutor;
+  }
+
+  async pushAgentContext(agentId, initialPrompt = null) {
+    const context = this.createAgentContext(agentId, { isRoot: this.agentStack.length === 0 });
+    this.agentStack.push(context);
+    this.applyContext(context);
+    context.autoPopOnComplete = Boolean(initialPrompt);
+
+    if (!initialPrompt) {
+      console.log(`🧠 Active agent: ${agentId}`);
+      return;
+    }
+
+    console.log(`🚀 Agent "${agentId}" started with task: "${initialPrompt}"`);
+    await this.taskExecutor.executeTaskLoop(initialPrompt, this.systemPrompt, this);
+
+    if (this.isInterrupted) {
+      console.log(`⏸️ Agent "${agentId}" paused. Use /continue to resume or /pop to return to parent.`);
+    } else {
+      await this.finalizeAutoAgentIfNeeded();
+    }
+  }
+
+  async popAgentContext(options = {}) {
+    if (this.agentStack.length <= 1) {
+      console.log('ℹ️ Already at the root agent - nothing to pop');
+      return false;
+    }
+
+    const context = this.agentStack.pop();
+    if (context.sessionManager.conversationHistory.length > 0) {
+      await context.sessionManager.archiveCurrentSession();
+    }
+    context.sessionManager.cleanupArtifacts();
+
+    const parentContext = this.agentStack[this.agentStack.length - 1];
+    this.applyContext(parentContext);
+
+    if (!options.auto) {
+      console.log(`⬅️ Returned to agent "${parentContext.agentId}"`);
+    } else {
+      console.log(`🏁 Agent completed. Back to "${parentContext.agentId}"`);
+    }
+
+    return true;
+  }
+
+  async finalizeAutoAgentIfNeeded() {
+    if (this.agentStack.length <= 1) {
+      return;
+    }
+
+    const context = this.agentStack[this.agentStack.length - 1];
+    if (!context.autoPopOnComplete || this.isInterrupted) {
+      return;
+    }
+
+    await this.popAgentContext({ auto: true });
   }
 
   setupKeypressListener() {
@@ -114,7 +245,8 @@ export class DeepSeekCLI {
   async askUserPrompt() {
     return new Promise((resolve) => {
       this.removeKeypressListener();
-      this.rl.question('\n> ', (answer) => {
+      const agentLabel = this.currentAgentId || 'Agent';
+      this.rl.question(`\n[${agentLabel}]> `, (answer) => {
         this.setupKeypressListener();
         resolve(answer.trim());
       });
@@ -129,7 +261,9 @@ Commands:
 - /continue <session-id> : Switch to archived session
 - /clear : Archive current session and start new one
 - /clear-all : Delete all sessions and archives
+- /agent <id> "<message>" : Activate another agent (message optional)
 - /compact : Reduce conversation using AI
+- /pop : Exit current agent and return to the parent agent
 - /archives : List all archived sessions
 - /help : Show this help
 - /quit | /exit : Quit
@@ -207,6 +341,10 @@ Interruption:
     });
   }
 
+  async handlePopAgent() {
+    await this.popAgentContext();
+  }
+
   async handleContinue(sessionId = null) {
     if (sessionId) {
       // Switch to specific archived session
@@ -249,30 +387,69 @@ Interruption:
     }
     
     await this.taskExecutor.executeTaskLoop(continuePrompt, this.systemPrompt, this);
+    
+    if (!this.isInterrupted) {
+      await this.finalizeAutoAgentIfNeeded();
+    }
   }
 
   async launchAgentFromUserCommand(agentId, message) {
       try {
-          console.log(`🚀 Launching agent "${agentId}" with message: "${message}"`);
-          const configPath = this.configFile;
-          const apiKey = this.apiKey;
-
-          await runAgent(agentId, message, {
-              configPath,
-              depth: 0,
-              apiKey,
-              parentSessionManager: this.sessionManager
-          });
-          
-          console.log(`✅ Agent "${agentId}" completed - session archived`);
+          await this.pushAgentContext(agentId, message);
       } catch (err) {
           console.error(`❌ Failed to launch agent "${agentId}": ${err.message}`);
+          if (this.agentStack.length > 1 && this.currentAgentId === agentId) {
+              const failedContext = this.agentStack.pop();
+              failedContext.sessionManager.cleanupArtifacts();
+          }
+          if (this.agentStack.length > 0) {
+              this.applyContext(this.agentStack[this.agentStack.length - 1]);
+          }
       }
+  }
+
+  async launchAgentFromAI(agentId, message) {
+    try {
+      console.log(`🤝 Delegating to agent "${agentId}" with task: "${message}"`);
+      const depth = Math.max(0, this.agentStack.length - 1);
+      await runAgent(agentId, message, {
+        configPath: this.configFile,
+        depth,
+        apiKey: this.apiKey,
+        parentSessionManager: this.sessionManager
+      });
+      console.log(`✅ Agent "${agentId}" completed`);
+    } catch (error) {
+      console.error(`❌ Agent "${agentId}" failed: ${error.message}`);
+    }
+  }
+
+  async handleSpecialCommand(commandLine) {
+    const agentMatch = commandLine.match(/^agent\s+(\w+)\s*:?\s*(.+)$/i);
+    if (!agentMatch) {
+      return false;
+    }
+
+    const agentId = agentMatch[1];
+    let message = agentMatch[2]?.trim();
+
+    if (!message) {
+      console.log('❌ Agent command missing message content');
+      return true;
+    }
+
+    if ((message.startsWith('"') && message.endsWith('"')) || (message.startsWith("'") && message.endsWith("'"))) {
+      message = message.substring(1, message.length - 1);
+    }
+
+    await this.launchAgentFromAI(agentId, message);
+    return true;
   }
 
   async startInteractiveSession() {
     console.log(`📁 Working directory: ${this.workingDirectory}`);
     console.log('Press ESC or Ctrl+C at any time to interrupt current task');
+    console.log(`🧠 Active agent: ${this.currentAgentId}`);
 
     while (true) {
       try {
@@ -294,10 +471,11 @@ Interruption:
         if (userPrompt.startsWith('/agent ')) {
             const parts = userPrompt.split(' ');
             const agentId = parts[1];
-            const message = userPrompt.substring(userPrompt.indexOf(agentId) + agentId.length).trim().replace(/^"|"$/g, '');
+            const rest = userPrompt.substring(userPrompt.indexOf(agentId) + agentId.length).trim();
+            const message = rest ? rest.replace(/^"|"$/g, '') : null;
 
-            if (!agentId || !message) {
-                console.log('Usage: /agent <agentId> "<message>"');
+            if (!agentId) {
+                console.log('Usage: /agent <agentId> "<message optional>"');
                 continue;
             }
 
@@ -318,6 +496,10 @@ Interruption:
 
           case '/clear-all':
             await this.handleClearAll();
+            continue;
+
+          case '/pop':
+            await this.handlePopAgent();
             continue;
 
           case '/help':
@@ -359,3 +541,4 @@ Interruption:
     }
   }
 }
+

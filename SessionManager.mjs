@@ -1,10 +1,15 @@
 import fs from 'fs';
+import path from 'path';
 
 export class SessionManager {
-  constructor(workingDirectory) {
+  constructor(workingDirectory, options = {}) {
     this.workingDirectory = workingDirectory;
-    this.sessionFile = `${workingDirectory}/.deepseek_session.json`;
-    this.archivesDirectory = `${workingDirectory}/.deepseek_archives`;
+    this.sessionNamespace = options.sessionNamespace || null;
+    const namespaceSuffix = this.sessionNamespace ? `_${this.sessionNamespace}` : '';
+    this.sessionFile = `${workingDirectory}/.deepseek_session${namespaceSuffix}.json`;
+    this.archivesDirectory = this.sessionNamespace
+      ? path.join(workingDirectory, '.deepseek_archives', this.sessionNamespace)
+      : `${workingDirectory}/.deepseek_archives`;
     this.conversationHistory = [];
     this.fullHistory = [];
     this.currentSessionId = null;
@@ -131,6 +136,11 @@ export class SessionManager {
     
     // Clear all archives
     try {
+      if (!fs.existsSync(this.archivesDirectory)) {
+        console.log('ℹ️ No archives to clear');
+        return;
+      }
+
       const files = fs.readdirSync(this.archivesDirectory);
       let deletedCount = 0;
       
@@ -276,5 +286,17 @@ export class SessionManager {
 
   getInitialPrompt() {
     return this.initialPrompt;
+  }
+
+  cleanupArtifacts() {
+    if (this.sessionNamespace) {
+      try {
+        if (fs.existsSync(this.sessionFile)) {
+          fs.unlinkSync(this.sessionFile);
+        }
+      } catch (error) {
+        // Ignore cleanup errors
+      }
+    }
   }
 }

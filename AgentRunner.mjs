@@ -39,7 +39,10 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
         : parentSessionManager 
             ? parentSessionManager.workingDirectory 
             : process.cwd();
-    const agentSessionManager = new SessionManager(agentWorkingDir);
+    const sessionNamespace = parentSessionManager
+        ? `${parentSessionManager.currentSessionId || 'main'}_${agentId}_${Date.now().toString(36)}`
+        : `${agentId}_${Date.now().toString(36)}`;
+    const agentSessionManager = new SessionManager(agentWorkingDir, { sessionNamespace });
     const commandExecutor = new CommandExecutor(agentWorkingDir, []);
     
     const parentSessionId = parentSessionManager?.currentSessionId || 'main';
