@@ -25,8 +25,12 @@ DEEPSEEK_API_KEY=your_deepseek_api_key_here
 ### Method 2: Command Line Argument
 Pass the API key directly when running the CLI:
 ```bash
+# First argument = workspace directory
+# Remaining arguments are forwarded to the CLI (API key, flags, etc.)
 ./deepseek.sh /path/to/your/project your_api_key_here
 ```
+
+If you omit the first argument, the script uses the directory from which you launched it as the agent workspace. This lets you invoke the CLI from anywhere while pointing it to a different project tree (e.g., `./deepseek.sh samples/gallery`).
 
 ### Getting Your API Key
 1. Visit [DeepSeek Platform](https://platform.deepseek.com/)

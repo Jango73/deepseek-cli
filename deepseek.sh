@@ -10,7 +10,7 @@ SCRIPT_FILE="$SCRIPT_DIR/src/main.mjs"
 # Required dependencies
 DEPS=()
 
-# Store the ORIGINAL working directory
+# Store the ORIGINAL working directory (where user launched the script)
 ORIGINAL_DIR="$(pwd)"
 
 # Change to script directory ONLY for npm operations
@@ -36,5 +36,9 @@ if [ ! -f "$SCRIPT_FILE" ]; then
     exit 1
 fi
 
-echo "[run] Starting deepseek CLI from: $ORIGINAL_DIR"
-exec node "$SCRIPT_FILE" "$ORIGINAL_DIR"
+# Determine target working directory (default to where script was launched)
+TARGET_DIR="${1:-$ORIGINAL_DIR}"
+shift || true
+
+echo "[run] Starting deepseek CLI with workspace: $TARGET_DIR"
+exec node "$SCRIPT_FILE" "$TARGET_DIR" "$@"

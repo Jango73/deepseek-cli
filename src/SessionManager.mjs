@@ -6,23 +6,30 @@ export class SessionManager {
     this.workingDirectory = workingDirectory;
     this.sessionNamespace = options.sessionNamespace || null;
     const namespaceSuffix = this.sessionNamespace ? `_${this.sessionNamespace}` : '';
-    this.sessionFile = `${workingDirectory}/.deepseek_session${namespaceSuffix}.json`;
+    this.sessionsDirectory = path.join(workingDirectory, '.deepseek_sessions');
+    this.sessionFile = path.join(this.sessionsDirectory, `.deepseek_session${namespaceSuffix}.json`);
+    const archivesRoot = path.join(this.sessionsDirectory, 'archives');
     this.archivesDirectory = this.sessionNamespace
-      ? path.join(workingDirectory, '.deepseek_archives', this.sessionNamespace)
-      : `${workingDirectory}/.deepseek_archives`;
+      ? path.join(archivesRoot, this.sessionNamespace)
+      : archivesRoot;
     this.conversationHistory = [];
     this.fullHistory = [];
     this.currentSessionId = null;
     this.currentSessionDescription = '';
     this.initialPrompt = '';
     
+    this.ensureDirectory(this.sessionsDirectory);
     this.ensureArchivesDirectory();
   }
 
-  ensureArchivesDirectory() {
-    if (!fs.existsSync(this.archivesDirectory)) {
-      fs.mkdirSync(this.archivesDirectory, { recursive: true });
+  ensureDirectory(targetPath) {
+    if (!fs.existsSync(targetPath)) {
+      fs.mkdirSync(targetPath, { recursive: true });
     }
+  }
+
+  ensureArchivesDirectory() {
+    this.ensureDirectory(this.archivesDirectory);
   }
 
   generateSessionId() {

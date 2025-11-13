@@ -221,7 +221,7 @@ export class DeepSeekCLI {
       process.stdin.setEncoding('utf8');
       
       this.keypressHandler = (key) => {
-          if (key === '\u001b' || key === '\u0003') {
+          if (key === '\u001b') {
               if (!this.isInterrupted) {
                   this.isInterrupted = true;
                   console.log('\n🛑 INTERRUPTION REQUESTED - Stopping current operation...');
@@ -272,7 +272,7 @@ Commands:
 - /status : Show current session status
 
 Interruption:
-- Press ESC or Ctrl+C to interrupt any operation
+- Press ESC to interrupt any operation
 - Works during API calls and command execution
     `);
   }
@@ -448,7 +448,7 @@ Interruption:
 
   async startInteractiveSession() {
     console.log(`📁 Working directory: ${this.workingDirectory}`);
-    console.log('Press ESC or Ctrl+C at any time to interrupt current task');
+    console.log('Press ESC at any time to interrupt current task');
     console.log(`🧠 Active agent: ${this.currentAgentId}`);
 
     while (true) {
@@ -541,4 +541,3 @@ Interruption:
     }
   }
 }
-
