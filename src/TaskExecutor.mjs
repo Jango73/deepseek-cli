@@ -67,34 +67,9 @@ export class TaskExecutor {
         }
 
         const parsedResponse = this.commandExecutor.parseAIResponse(response);
+        const actions = parsedResponse.actions || [];
 
-        if (parsedResponse.type === 'comment') {
-          const commentLines = parsedResponse.content.split('\n');
-          commentLines.forEach(line => {
-            if (line.trim()) {
-              console.log(`${line}`);
-            }
-          });
-          currentPrompt = "Comment noted. Continue with next command.";
-          iteration++;
-          continue;
-        } else {
-          const fullResponseLines = parsedResponse.fullResponse.split('\n');
-          fullResponseLines.forEach(line => {
-            if (line.trim()) {
-              console.log(`${line}`);
-            }
-          });
-        }
-
-        const commandsToRun = (parsedResponse.commands && parsedResponse.commands.length > 0)
-          ? parsedResponse.commands
-          : (parsedResponse.command ? [parsedResponse.command] : []);
-        const normalizedCommands = commandsToRun
-          .map(cmd => (cmd || '').trim())
-          .filter(cmd => cmd.length > 0);
-
-        if (normalizedCommands.length === 0) {
+        if (actions.length === 0) {
           console.log('❌ No valid command found');
           currentPrompt = "Give me a valid shell command to execute";
           iteration++;
@@ -104,9 +79,32 @@ export class TaskExecutor {
         let lastSummaryPrompt = null;
         let executedSomething = false;
 
-        for (const singleCommand of normalizedCommands) {
+        for (const action of actions) {
+          if (action.type === 'comment') {
+            if (action.content) {
+              console.log(action.content);
+            }
+            continue;
+          }
+
+          if (action.type === 'agent') {
+            if (cliInstance && typeof cliInstance.launchAgentFromAI === 'function') {
+              executedSomething = true;
+              await cliInstance.launchAgentFromAI(action.agentId, action.message);
+              this.sessionManager.addHistoryEntry({
+                command: `agent ${action.agentId} ${action.message}`,
+                success: true,
+                output: `Delegated to agent ${action.agentId}`
+              });
+              lastSummaryPrompt = `Delegated to agent ${action.agentId}. Continue.`;
+            } else {
+              console.log(`❌ Agent delegation unsupported: ${action.agentId}`);
+            }
+            continue;
+          }
+
           if (cliInstance && typeof cliInstance.handleSpecialCommand === 'function') {
-            const handled = await cliInstance.handleSpecialCommand(singleCommand);
+            const handled = await cliInstance.handleSpecialCommand(action.content);
             if (handled) {
               executedSomething = true;
               lastSummaryPrompt = "Agent command handled. Continue with the next instruction.";
@@ -114,13 +112,17 @@ export class TaskExecutor {
             }
           }
 
-          // Handle "pause" command by breaking out of the loop
-          if (singleCommand.toLowerCase() === 'pause' || singleCommand.toLowerCase() === 'exit') {
+          if (action.content.toLowerCase() === 'pause' || action.content.toLowerCase() === 'exit') {
             shouldBreak = true;
+            executedSomething = true;
             break;
           }
 
-          const result = await this.commandExecutor.executeCommand(singleCommand);
+          const display = action.content.includes('\n')
+            ? `\n${action.content}`
+            : ` ${action.content}`;
+          console.log(`🔧 Executing:${display}`);
+          const result = await this.commandExecutor.executeCommand(action.content);
           executedSomething = true;
 
           if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted) || result.interrupted) {
@@ -130,13 +132,13 @@ export class TaskExecutor {
           }
 
           this.sessionManager.addHistoryEntry({
-            command: singleCommand,
+            command: action.content,
             success: result.success,
             output: result.output
           });
 
           lastSummaryPrompt = this.commandExecutor.createSummaryPrompt(
-            singleCommand, 
+            action.content, 
             result.success, 
             result.output, 
             result.error

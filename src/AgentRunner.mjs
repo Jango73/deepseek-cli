@@ -73,6 +73,8 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
     agentSessionManager.saveSession();
 
     agentStack.push(agentId);
+    const basePrefix = depth > 0 ? '│ '.repeat(depth) : '';
+    process.stdout.write(`${basePrefix}🚀 Agent "${agentId}" instantiated (depth ${depth})\n`);
 
     const checkInterruption = () => {
       if (interrupted || interruptController?.isInterrupted()) {
@@ -86,30 +88,29 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
             const messages = agentSessionManager.getConversationHistory();
             const response = await askDeepseek(messages, apiKey);
             checkInterruption();
-            
-            const prefix = depth > 0 ? '│ '.repeat(depth) : '';
-            process.stdout.write(`${prefix}${response.trim()}\n`);
 
             agentSessionManager.addConversationMessage('assistant', response);
             agentSessionManager.saveSession();
 
-            if (/\>\>\s*(exit|pause|done)/i.test(response)) {
-                const prefix = depth > 0 ? '│ '.repeat(depth) : '';
-                process.stdout.write(`${prefix}🏁 Agent "${agentId}" finished.\n`);
-                
-                await agentSessionManager.archiveCurrentSession();
-                return;
+            const parsed = commandExecutor.parseAIResponse(response);
+            const actions = parsed.actions || [];
+
+            if (actions.length === 0) {
+                process.stdout.write(`${basePrefix}❓ AI response contained no executable command. Waiting for clarification.\n`);
             }
 
-            // handle inter-agent call
-            const lines = response.split('\n');
-            for (const line of lines) {
-                const match = line.match(/^>> agent (\w+)\s*:\s*(.+)$/i);
-                if (match) {
-                    const targetId = match[1];
-                    const message = match[2].trim();
-                    const prefix = depth > 0 ? '│ '.repeat(depth) : '';
-                    process.stdout.write(`${prefix}🤝 Delegating to agent "${targetId}"\n`);
+            for (const action of actions) {
+                checkInterruption();
+
+                if (action.type === 'comment') {
+                    process.stdout.write(`${basePrefix}${action.content}\n`);
+                    continue;
+                }
+
+                if (action.type === 'agent') {
+                    const targetId = action.agentId;
+                    const message = action.message || '';
+                    process.stdout.write(`${basePrefix}🤝 Delegating to agent "${targetId}"\n`);
                     await runAgent(targetId, message, {
                         configPath: resolvedConfigPath,
                         depth: depth + 1,
@@ -118,42 +119,54 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                         workingDirectory: agentWorkingDir,
                         interruptController
                     });
-                    checkInterruption();
                     continue;
                 }
-                
-                // EXECUTE SHELL COMMANDS
-                if (line.startsWith('>>') && line.length > 2) {
-                    const command = line.substring(2).trim();
-                    if (command && !command.toLowerCase().startsWith('agent ')) {
-                        try {
-                            const prefix = depth > 0 ? '│ '.repeat(depth) : '';
-                            process.stdout.write(`${prefix}🔧 Executing: ${command}\n`);
-                            
-                            const result = await commandExecutor.executeCommand(command);
-                            checkInterruption();
-                            
-                            process.stdout.write(`${prefix}${result.output}\n`);
-                            
-                            const resultMessage = `Command: ${command}\nOutput: ${result.output}\nSuccess: ${result.success}`;
-                            agentSessionManager.addConversationMessage('system', resultMessage);
-                            agentSessionManager.saveSession();
-                        } catch (error) {
-                            const prefix = depth > 0 ? '│ '.repeat(depth) : '';
-                            process.stdout.write(`${prefix}❌ Command failed: ${error.message}\n`);
-                        }
+
+                if (action.type === 'shell') {
+                    try {
+                        const display = action.content.includes('\n')
+                            ? `\n${action.content}`
+                            : ` ${action.content}`;
+                        process.stdout.write(`${basePrefix}🔧 Executing:${display}\n`);
+                        
+                        const result = await commandExecutor.executeCommand(action.content);
+                        checkInterruption();
+                        
+                        process.stdout.write(`${basePrefix}${result.output}\n`);
+                        
+                        const summaryLines = [
+                            `Command: ${action.content}`,
+                            'Output:',
+                            ...(result.output ? result.output.split('\n') : ['No output']),
+                            `Success: ${result.success}`
+                        ];
+                        const resultMessage = summaryLines
+                            .map(line => `>> ${line}`)
+                            .join('\n');
+                        agentSessionManager.addConversationMessage('system', resultMessage);
+                        agentSessionManager.saveSession();
+                    } catch (error) {
+                        process.stdout.write(`${basePrefix}❌ Command failed: ${error.message}\n`);
                     }
                 }
+            }
+
+            const trimmed = response.trim();
+            if (/^(>>\s*)?(exit|pause|done)$/i.test(trimmed)) {
+                process.stdout.write(`${basePrefix}🏁 Agent "${agentId}" finished.\n`);
+                
+                await agentSessionManager.archiveCurrentSession();
+                return;
             }
         }
     } catch (error) {
         if (error.message === 'INTERRUPTED_BY_USER') {
-            const prefix = depth > 0 ? '│ '.repeat(depth) : '';
-            process.stdout.write(`${prefix}⏹️ Agent "${agentId}" interrupted.\n`);
+            process.stdout.write(`${basePrefix}⏹️ Agent "${agentId}" interrupted.\n`);
             await agentSessionManager.archiveCurrentSession();
         }
         throw error;
     } finally {
+        process.stdout.write(`${basePrefix}🧹 Agent "${agentId}" destroyed\n`);
         unregisterInterrupt?.();
         interruptController?.clearInterrupt();
         agentStack.pop();

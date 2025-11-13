@@ -44,6 +44,7 @@ export class DeepSeekCLI {
       const rootContext = this.createAgentContext(this.defaultAgentId, { isRoot: true });
       this.agentStack.push(rootContext);
       this.applyContext(rootContext);
+      console.log(`🚀 Agent "${this.currentAgentId}" instantiated (root context)`);
     } catch (error) {
       console.error(`❌ Failed to initialize default agent: ${error.message}`);
       process.exit(1);
@@ -162,6 +163,7 @@ export class DeepSeekCLI {
     const context = this.createAgentContext(agentId, { isRoot: this.agentStack.length === 0 });
     this.agentStack.push(context);
     this.applyContext(context);
+    console.log(`🚀 Agent "${agentId}" instantiated`);
     context.autoPopOnComplete = Boolean(initialPrompt);
 
     if (!initialPrompt) {
@@ -190,6 +192,7 @@ export class DeepSeekCLI {
       await context.sessionManager.archiveCurrentSession();
     }
     context.sessionManager.cleanupArtifacts();
+    console.log(`🧹 Agent "${context.agentId}" destroyed`);
 
     const parentContext = this.agentStack[this.agentStack.length - 1];
     this.applyContext(parentContext);

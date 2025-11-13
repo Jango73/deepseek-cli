@@ -45,7 +45,15 @@ export class CommandExecutor {
               return;
           }
 
-          console.log(`🔧 Executing: ${trimmedCommand}`);
+          const heredocError = this.findUnterminatedHeredoc(trimmedCommand);
+          if (heredocError) {
+              resolve({
+                  success: false,
+                  output: heredocError,
+                  error: 'Unterminated heredoc'
+              });
+              return;
+          }
 
           const args = ["-c", trimmedCommand];
           const childProcess = execFile("/bin/sh", args, { 
@@ -57,10 +65,8 @@ export class CommandExecutor {
               const output = stdout + stderr;
               const success = error === null;
 
-              console.log(`🔧 Command output: ${output}`);
-
               if (error) {
-                  console.log(`🔴 Exit code: ${error.code}`);
+                  console.error(`🔴 Command failed with exit code ${error.code}`);
               }
 
               resolve({ 
@@ -81,185 +87,209 @@ export class CommandExecutor {
     }
   }
 
-  isLikelyComment(line) {
-    return false;
-  }
+  parseAIResponse(response) {
+    const preferCodeBlocks = response.includes('```');
+    const summaryPrefixes = ['command:', 'output:', 'result:', 'success:', 'error:'];
+    const lines = response.split('\n');
+    const actions = [];
+    let currentScriptLines = [];
+    let pendingCommentLines = [];
+    let inCodeBlock = false;
 
-  getCurrentHeredocMarker(commandLines) {
-    let heredocMarker = null;
-    
-    for (const cmd of commandLines) {
-      // Détecter le début d'un heredoc
-      const heredocMatch = cmd.match(/<<\s*['"]?(\w+)['"]?/);
-      if (heredocMatch) {
-        heredocMarker = heredocMatch[1];
-      }
-      
-      // Si on trouve le marqueur de fin, reset
-      if (heredocMarker && cmd.trim() === heredocMarker) {
-        heredocMarker = null;
-      }
-    }
-    
-    return heredocMarker;
-  }
-
-  shouldContinueCommandBlock(line, currentCommandLines) {
-    const heredocMarker = this.getCurrentHeredocMarker(currentCommandLines);
-    if (heredocMarker) {
-      const lastLine = currentCommandLines[currentCommandLines.length - 1];
-      return lastLine.trim() !== heredocMarker;
-    }
-
-    if (!line) return false;
-    if (this.isLikelyComment(line)) return false;
-    
-    // Continue si la ligne se termine par un backslash (continuation)
-    if (line.trim().endsWith('\\')) return true;
-    
-    return false;
-  }
-
-  separateCommentsAndCommands(lines) {
-    const commentLines = [];
-    const commands = [];
-    let currentCommandLines = [];
-    let collectingCommand = false;
-
-    const flushCommand = () => {
-      if (currentCommandLines.length === 0) {
+    const flushScript = () => {
+      if (currentScriptLines.length === 0) {
         return;
       }
-      commands.push(this.reconstructMultilineCommand(currentCommandLines));
-      currentCommandLines = [];
-      collectingCommand = false;
+      const script = currentScriptLines.join('\n').trim();
+      if (script) {
+        actions.push({ type: 'shell', content: script });
+      }
+      currentScriptLines = [];
     };
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
+    const flushComment = () => {
+      if (pendingCommentLines.length === 0) {
+        return;
+      }
+      const text = pendingCommentLines.join('\n').trim();
+      if (text) {
+        actions.push({ type: 'comment', content: text });
+      }
+      pendingCommentLines = [];
+    };
 
-      if (trimmedLine.startsWith('>>')) {
-        if (collectingCommand) {
-          flushCommand();
+    const pushCommentLine = (text) => {
+      if (text === null || text === undefined) {
+        return;
+      }
+      pendingCommentLines.push(text);
+    };
+
+    const handleAgentLine = (trimmedLine) => {
+      const agentMatch = trimmedLine.match(/^agent\s+(\w+)\s*:?\s*(.+)?$/i);
+      if (!agentMatch) {
+        return false;
+      }
+      flushComment();
+      flushScript();
+      actions.push({
+        type: 'agent',
+        agentId: agentMatch[1],
+        message: (agentMatch[2] || '').trim()
+      });
+      return true;
+    };
+
+    const isSummaryLine = (trimmedLine) => {
+      if (!trimmedLine) return false;
+      const normalized = trimmedLine.toLowerCase();
+      return summaryPrefixes.some(prefix => normalized.startsWith(prefix));
+    };
+
+    const handleLineContent = (text) => {
+      if (!text && !inCodeBlock) {
+        flushComment();
+        return;
+      }
+
+      const trimmedLine = text.trim();
+
+      if (!inCodeBlock) {
+        if (trimmedLine.startsWith('>>')) {
+          flushComment();
+          const comment = trimmedLine.substring(2).trim();
+          if (comment) {
+            actions.push({ type: 'comment', content: comment });
+          }
+          return;
         }
 
-        const commandContent = trimmedLine.substring(2).trim();
-        if (!commandContent) {
-          continue;
+        if (handleAgentLine(trimmedLine)) {
+          return;
         }
 
-        currentCommandLines.push(commandContent);
-        const needsContinuation = this.shouldContinueCommandBlock(
-          commandContent,
-          currentCommandLines
-        );
+        if (isSummaryLine(trimmedLine)) {
+          flushScript();
+          pushCommentLine(trimmedLine);
+          return;
+        }
 
-        if (!needsContinuation) {
-          flushCommand();
+        if (preferCodeBlocks) {
+          if (trimmedLine) {
+            pushCommentLine(trimmedLine);
+          } else {
+            flushComment();
+          }
         } else {
-          collectingCommand = true;
+          flushComment();
+          currentScriptLines.push(text);
         }
-
-        continue;
+        return;
       }
 
-      if (collectingCommand) {
-        currentCommandLines.push(line);
-        const needsContinuation = this.shouldContinueCommandBlock(
-          line,
-          currentCommandLines
-        );
-        if (!needsContinuation) {
-          flushCommand();
-        }
-        continue;
-      }
+      currentScriptLines.push(text);
+    };
 
-      commentLines.push(line);
-    }
+    for (const rawLine of lines) {
+      let line = rawLine.replace(/\r$/, '');
 
-    if (collectingCommand) {
-      flushCommand();
-    }
-
-    return { commentLines, commands };
-  }
-
-  cleanCommentLines(commentLines) {
-    const cleaned = [...commentLines];
-    while (cleaned.length > 0 && cleaned[0] === '') {
-      cleaned.shift();
-    }
-    return cleaned.join('\n');
-  }
-
-  reconstructMultilineCommand(commandLines) {
-    if (commandLines.length === 0) return null;
-    
-    let reconstructed = '';
-    
-    for (let i = 0; i < commandLines.length; i++) {
-      if (i > 0) {
-        reconstructed += '\n';
-      }
-      reconstructed += commandLines[i];
-    }
-    
-    return reconstructed;
-  }
-
-  parseAIResponse(response) {
-    const lines = response.split('\n');
-    
-    const { commentLines, commands } = this.separateCommentsAndCommands(lines);
-    const cleanComment = this.cleanCommentLines(commentLines);
-    if (!commands.length) {
-      const trimmedResponse = response.trim();
-      if (trimmedResponse.length === 0) {
-        return {
-          type: 'comment',
-          content: cleanComment,
-          command: null,
-          fullResponse: response
-        };
-      }
-      
-      if (trimmedResponse.includes('\n')) {
-        return {
-          type: 'comment',
-          content: cleanComment,
-          command: null,
-          fullResponse: response
-        };
-      }
-
-      return {
-        type: 'command',
-        command: trimmedResponse,
-        commands: [trimmedResponse],
-        preComment: null,
-        fullResponse: response
+      const processSegment = (segment) => {
+        if (!segment.length) return;
+        handleLineContent(segment);
       };
+
+      while (true) {
+        const fenceIndex = line.indexOf('```');
+        if (fenceIndex === -1) {
+          processSegment(line);
+          break;
+        }
+
+        const beforeFence = line.substring(0, fenceIndex);
+        processSegment(beforeFence);
+
+        const afterFence = line.substring(fenceIndex + 3);
+
+        if (!inCodeBlock) {
+          flushComment();
+          inCodeBlock = true;
+          // Skip optional language hint immediately after the fence
+          const langMatch = afterFence.match(/^[a-zA-Z0-9_-]+/);
+          line = langMatch
+            ? afterFence.substring(langMatch[0].length).replace(/^\s*/, '')
+            : afterFence;
+        } else {
+          flushScript();
+          inCodeBlock = false;
+          line = afterFence;
+        }
+      }
     }
-    
-    const combinedCommand = commands.join('\n');
-    
+
+    flushScript();
+    flushComment();
+
+    const commands = actions
+      .filter(action => action.type === 'shell')
+      .map(action => action.content);
+
+    let type = 'comment';
+    if (commands.length > 0) {
+      type = 'command';
+    } else if (actions.some(action => action.type === 'agent')) {
+      type = 'agent';
+    }
+
     return {
-      type: 'command',
-      command: combinedCommand,
+      type,
+      command: commands[0] || null,
       commands,
-      preComment: cleanComment || null,
+      actions,
       fullResponse: response
     };
   }
 
   createSummaryPrompt(command, success, output, error) {
-    let resultText = `Command: ${command}\n`;
-    resultText += `Result: ${success ? 'SUCCESS' : 'FAILED'}\n`;
+    const lines = [
+      `Command: ${command}`,
+      `Result: ${success ? 'SUCCESS' : 'FAILED'}`
+    ];
+
     if (error) {
-      resultText += `Error: ${error}\n`;
+      lines.push(`Error: ${error}`);
     }
-    resultText += `Output: ${output}\n\nNext command?`;
-    return resultText;
+
+    lines.push('Output:');
+    const outputLines = (output || 'No output').split('\n');
+    lines.push(...outputLines);
+    lines.push('', 'Next command?');
+
+    return lines
+      .map(line => `>> ${line}`)
+      .join('\n')
+      .trimEnd();
+  }
+
+  findUnterminatedHeredoc(command) {
+    const heredocPattern = /<<\s*(['"]?)([A-Za-z0-9_]+)\1/g;
+    const pendingMarkers = [];
+
+    let match;
+    while ((match = heredocPattern.exec(command)) !== null) {
+      const marker = match[2];
+      if (marker) {
+        const markerRegex = new RegExp(`^${marker}$`, 'm');
+        if (!markerRegex.test(command.substring(match.index))) {
+          pendingMarkers.push(marker);
+        }
+      }
+    }
+
+    if (pendingMarkers.length === 0) {
+      return null;
+    }
+
+    const uniqueMarkers = [...new Set(pendingMarkers)];
+    return `❌ Unterminated heredoc marker(s): ${uniqueMarkers.join(', ')}. Complete the command with the closing marker before executing.`;
   }
 }

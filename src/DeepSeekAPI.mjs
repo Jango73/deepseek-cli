@@ -15,6 +15,31 @@ export class DeepSeekAPI {
 
   async makeApiRequest(messages, systemPrompt = null) {
     const apiConfig = this.getApiConfig();
+    const cleanupWaitIndicator = (() => {
+      const startTime = Date.now();
+      let indicatorActive = false;
+      let intervalHandle = null;
+      const renderIndicator = () => {
+        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+        process.stdout.write(`\r⏳ Waiting for AI response… ${elapsedSeconds}s`);
+      };
+      const timeoutHandle = setTimeout(() => {
+        indicatorActive = true;
+        renderIndicator();
+        intervalHandle = setInterval(renderIndicator, 1000);
+      }, 10000);
+
+      return () => {
+        clearTimeout(timeoutHandle);
+        if (intervalHandle) {
+          clearInterval(intervalHandle);
+        }
+        if (indicatorActive) {
+          const clearLine = '\r' + ' '.repeat(60) + '\r';
+          process.stdout.write(clearLine);
+        }
+      };
+    })();
     
     const finalMessages = systemPrompt 
       ? [{ role: 'system', content: systemPrompt }, ...messages]
@@ -65,6 +90,8 @@ export class DeepSeekAPI {
         console.error('❌ API call failed:', error.message);
       }
       throw error;
+    } finally {
+      cleanupWaitIndicator();
     }
   }
 }

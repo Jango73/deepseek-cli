@@ -105,7 +105,7 @@ the AI summary fails, a fallback truncation method is used.
 
 Agents can launch other agents by instruction such as:
 
-    >> agent <id>: <message>
+    agent <id>: <message>
 
 or interactively via a user command:
 
