@@ -1,6 +1,7 @@
 import { execFile } from "child_process";
 import fs from 'fs';
 import path from 'path';
+import { ConsoleOutput } from "./ConsoleOutput.mjs";
 
 export class CommandExecutor {
   static MAX_COMMAND_LINES = 20;
@@ -95,7 +96,7 @@ export class CommandExecutor {
               const success = error === null;
 
               if (error) {
-                  console.error(`🔴 Command failed with exit code ${error.code}`);
+                  ConsoleOutput.error(`🔴 Command failed with exit code ${error.code}`);
               }
 
               resolve({ 

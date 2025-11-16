@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { ConsoleOutput } from "./ConsoleOutput.mjs";
 
 export class SessionManager {
   constructor(workingDirectory, options = {}) {
@@ -48,19 +49,19 @@ export class SessionManager {
         this.currentSessionDescription = data.currentSessionDescription || '';
         this.initialPrompt = data.initialPrompt || '';
         
-        console.log('📁 Previous session loaded');
+        ConsoleOutput.log('📁 Previous session loaded');
         this.showSessionStatus();
         return true;
       } else {
         this.currentSessionId = this.generateSessionId();
-        console.log('🆕 New session - no previous session found');
+        ConsoleOutput.log('🆕 New session - no previous session found');
         return false;
       }
     } catch (error) {
       this.conversationHistory = [];
       this.fullHistory = [];
       this.currentSessionId = this.generateSessionId();
-      console.log('🆕 New session - error loading previous session');
+      ConsoleOutput.log('🆕 New session - error loading previous session');
       return false;
     }
   }
@@ -82,7 +83,7 @@ export class SessionManager {
 
   async archiveCurrentSession() {
     if (this.conversationHistory.length === 0) {
-      console.log('ℹ️ No conversation to archive');
+      ConsoleOutput.log('ℹ️ No conversation to archive');
       return null;
     }
 
@@ -111,11 +112,11 @@ export class SessionManager {
     
     try {
       fs.writeFileSync(archiveFile, JSON.stringify(archiveData, null, 2));
-      console.log(`💾 Session archived: ${sessionId}`);
-      console.log(`   Description: ${description}`);
+      ConsoleOutput.log(`💾 Session archived: ${sessionId}`);
+      ConsoleOutput.log(`   Description: ${description}`);
       return sessionId;
     } catch (error) {
-      console.error('❌ Failed to archive session:', error.message);
+      ConsoleOutput.error('❌ Failed to archive session:', error.message);
       return null;
     }
   }
@@ -134,7 +135,7 @@ export class SessionManager {
     this.currentSessionDescription = '';
     this.initialPrompt = '';
     this.saveSession();
-    console.log('🧹 Current session cleared');
+    ConsoleOutput.log('🧹 Current session cleared');
   }
 
   clearAllSessions() {
@@ -144,7 +145,7 @@ export class SessionManager {
     // Clear all archives
     try {
       if (!fs.existsSync(this.archivesDirectory)) {
-        console.log('ℹ️ No archives to clear');
+        ConsoleOutput.log('ℹ️ No archives to clear');
         return;
       }
 
@@ -158,9 +159,9 @@ export class SessionManager {
         }
       }
       
-      console.log(`🗑️  Deleted ${deletedCount} archived sessions`);
+      ConsoleOutput.log(`🗑️  Deleted ${deletedCount} archived sessions`);
     } catch (error) {
-      console.error('❌ Error clearing archives:', error.message);
+      ConsoleOutput.error('❌ Error clearing archives:', error.message);
     }
   }
 
@@ -181,7 +182,7 @@ export class SessionManager {
               commandCount: data.commandCount
             });
           } catch (error) {
-            console.log(`⚠️  Corrupted archive: ${file}`);
+            ConsoleOutput.log(`⚠️  Corrupted archive: ${file}`);
           }
         }
       }
@@ -191,7 +192,7 @@ export class SessionManager {
       
       return archives;
     } catch (error) {
-      console.error('❌ Error listing archives:', error.message);
+      ConsoleOutput.error('❌ Error listing archives:', error.message);
       return [];
     }
   }
@@ -200,14 +201,14 @@ export class SessionManager {
     try {
       const archiveFile = `${this.archivesDirectory}/${sessionId}.json`;
       if (!fs.existsSync(archiveFile)) {
-        console.log('❌ Archive not found');
+        ConsoleOutput.log('❌ Archive not found');
         return null;
       }
 
       const data = JSON.parse(fs.readFileSync(archiveFile, 'utf8'));
       return data;
     } catch (error) {
-      console.error('❌ Error loading archive:', error.message);
+      ConsoleOutput.error('❌ Error loading archive:', error.message);
       return null;
     }
   }
@@ -232,7 +233,7 @@ export class SessionManager {
     this.initialPrompt = archiveData.initialPrompt || '';
     this.saveSession();
 
-    console.log(`🔄 Switched to archived session: ${archiveData.description}`);
+    ConsoleOutput.log(`🔄 Switched to archived session: ${archiveData.description}`);
     this.showSessionStatus();
     return true;
   }
@@ -242,21 +243,21 @@ export class SessionManager {
     const stepsCount = this.fullHistory.length;
     
     if (historyCount === 0) {
-      console.log('🆕 New session - no conversation history');
+      ConsoleOutput.log('🆕 New session - no conversation history');
     } else {
-      console.log('📁 Current session:');
-      console.log(`   ID: ${this.currentSessionId}`);
+      ConsoleOutput.log('📁 Current session:');
+      ConsoleOutput.log(`   ID: ${this.currentSessionId}`);
       if (this.initialPrompt) {
-        console.log(`   Task: ${this.initialPrompt}`);
+        ConsoleOutput.log(`   Task: ${this.initialPrompt}`);
       }
-      console.log(`   Conversation: ${historyCount} messages`);
-      console.log(`   Command history: ${stepsCount} steps`);
+      ConsoleOutput.log(`   Conversation: ${historyCount} messages`);
+      ConsoleOutput.log(`   Command history: ${stepsCount} steps`);
       
       const lastUserMsg = this.conversationHistory
         .filter(msg => msg.role === 'user')
         .pop();
       if (lastUserMsg) {
-        console.log(`   Last action: "${this.truncateOutput(lastUserMsg.content, 1)}"`);
+        ConsoleOutput.log(`   Last action: "${this.truncateOutput(lastUserMsg.content, 1)}"`);
       }
     }
   }

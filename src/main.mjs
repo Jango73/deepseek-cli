@@ -2,6 +2,7 @@ import { DeepSeekCLI } from './DeepSeekCLI.mjs';
 import { runAgent } from './AgentRunner.mjs';
 import { SessionManager } from './SessionManager.mjs';
 import { InterruptController } from './InterruptController.mjs';
+import { ConsoleOutput } from "./ConsoleOutput.mjs";
 
 const args = process.argv.slice(2);
 
@@ -61,7 +62,7 @@ const main = async () => {
         // Mode agent - ne pas setup de signal handlers
         const agentId = getFlagValue('--agent');
         if (!agentId) {
-            console.error('Missing value for --agent');
+            ConsoleOutput.error('Missing value for --agent');
             process.exit(1);
         }
 
@@ -74,7 +75,7 @@ const main = async () => {
         const apiKey = getFlagValue('--api-key') || process.env.DEEPSEEK_API_KEY;
 
         if (!apiKey) {
-            console.error('Missing DEEPSEEK_API_KEY');
+            ConsoleOutput.error('Missing DEEPSEEK_API_KEY');
             process.exit(1);
         }
 
@@ -107,9 +108,9 @@ const main = async () => {
         }
 
         if (agentInterrupted) {
-            console.log('↩️ Agent interrupted. Back to the interactive CLI.');
+            ConsoleOutput.log('↩️ Agent interrupted. Back to the interactive CLI.');
         } else {
-            console.log('✅ Agent completed. You can continue from the CLI.');
+            ConsoleOutput.log('✅ Agent completed. You can continue from the CLI.');
         }
     }
 
@@ -118,18 +119,18 @@ const main = async () => {
     const apiKey = getFlagValue('--api-key') || process.env.DEEPSEEK_API_KEY;
 
     if (!workingDir) {
-        console.log('Missing working directory');
+        ConsoleOutput.log('Missing working directory');
         process.exit(1);
     }
 
     // Setup global signal handlers only for main process
     process.on('SIGINT', () => {
-        console.log('\n🛑 Shutting down...');
+        ConsoleOutput.log('\n🛑 Shutting down...');
         process.exit(0);
     });
 
     process.on('SIGTERM', () => {
-        console.log('\n🛑 Shutting down...');
+        ConsoleOutput.log('\n🛑 Shutting down...');
         process.exit(0);
     });
 
@@ -143,11 +144,11 @@ const main = async () => {
 };
 
 process.on('unhandledRejection', (error) => {
-    console.error('Unhandled rejection:', error);
+    ConsoleOutput.error('Unhandled rejection:', error);
     process.exit(1);
 });
 
 main().catch(error => {
-    console.error('Fatal error:', error);
+    ConsoleOutput.error('Fatal error:', error);
     process.exit(1);
 });

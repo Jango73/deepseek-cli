@@ -1,4 +1,5 @@
 import { printBlock } from './helpers.mjs';
+import { ConsoleOutput } from "./ConsoleOutput.mjs";
 
 export class TaskExecutor {
 
@@ -50,7 +51,7 @@ export class TaskExecutor {
       }
 
       try {
-        console.log("");
+        ConsoleOutput.log("");
 
         const apiAbortController = cliInstance?.createAIAbortController
           ? cliInstance.createAIAbortController()
@@ -68,7 +69,7 @@ export class TaskExecutor {
             cliInstance.releaseAIAbortController(apiAbortController);
           }
           if (error.name === 'AbortError' && (this.isInterrupted || cliInstance?.isInterrupted)) {
-            console.log("🛑 Interruption confirmed - stopping task...");
+            ConsoleOutput.log("🛑 Interruption confirmed - stopping task...");
             shouldBreak = true;
             break;
           }
@@ -84,7 +85,7 @@ export class TaskExecutor {
         }
 
         if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted)) {
-          console.log("🛑 Interruption confirmed - stopping task...");
+          ConsoleOutput.log("🛑 Interruption confirmed - stopping task...");
           shouldBreak = true;
           break;
         }
@@ -93,13 +94,13 @@ export class TaskExecutor {
         if (parsedResponse.diagnostics?.unclosedBlocks?.length) {
           for (const block of parsedResponse.diagnostics.unclosedBlocks) {
             const preview = block.preview.replace(/\s+/g, ' ').trim();
-            console.warn(`⚠️ Incomplete command block detected (missing <<<). Preview: ${preview}`);
+            ConsoleOutput.warn(`⚠️ Incomplete command block detected (missing <<<). Preview: ${preview}`);
           }
         }
         const actions = parsedResponse.actions || [];
 
         if (actions.length === 0) {
-          console.log('❌ No valid command found');
+          ConsoleOutput.log('❌ No valid command found');
           currentPrompt = "Give me a valid shell command to execute";
           iteration++;
           continue;
@@ -111,7 +112,7 @@ export class TaskExecutor {
         for (const action of actions) {
           if (action.type === 'comment') {
             if (action.content) {
-              console.log(action.content);
+              ConsoleOutput.log(action.content);
             }
             continue;
           }
@@ -127,7 +128,7 @@ export class TaskExecutor {
               });
               lastSummaryPrompt = `Delegated to agent ${action.agentId}. Continue.`;
             } else {
-              console.log(`❌ Agent delegation unsupported: ${action.agentId}`);
+              ConsoleOutput.log(`❌ Agent delegation unsupported: ${action.agentId}`);
             }
             continue;
           }
@@ -170,7 +171,7 @@ export class TaskExecutor {
           }
 
           if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted) || result.interrupted) {
-            console.log("🛑 Interruption confirmed - stopping task...");
+            ConsoleOutput.log("🛑 Interruption confirmed - stopping task...");
             shouldBreak = true;
             break;
           }
@@ -216,7 +217,7 @@ export class TaskExecutor {
           shouldBreak = true;
           break;
         } else {
-          console.error(`❌ Error: ${error.message}`);
+          ConsoleOutput.error(`❌ Error: ${error.message}`);
           currentPrompt = `Error: ${error.message}. What next?`;
           iteration++;
         }
@@ -224,12 +225,12 @@ export class TaskExecutor {
     }
 
     if (this.isInterrupted) {
-      console.log('🔄 Task interrupted - returning to main prompt...');
+      ConsoleOutput.log('🔄 Task interrupted - returning to main prompt...');
       this.isInterrupted = false;
     } else if (!shouldBreak && iteration > maxIterations) {
-      console.log(`\n🔁 Maximum iterations (${maxIterations}) reached`);
+      ConsoleOutput.log(`\n🔁 Maximum iterations (${maxIterations}) reached`);
     } else if (!shouldBreak) {
-      console.log(`\n✅ Task completed`);
+      ConsoleOutput.log(`\n✅ Task completed`);
     }
   }
 }

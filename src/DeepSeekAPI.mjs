@@ -1,3 +1,5 @@
+import { ConsoleOutput } from "./ConsoleOutput.mjs";
+
 export class DeepSeekAPI {
   constructor(apiKey) {
     this.apiKey = apiKey;
@@ -89,9 +91,9 @@ export class DeepSeekAPI {
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        console.error('❌ API request aborted');
+        ConsoleOutput.error('❌ API request aborted');
       } else {
-        console.error('❌ API call failed:', error.message);
+        ConsoleOutput.error('❌ API call failed:', error.message);
       }
       throw error;
     } finally {
