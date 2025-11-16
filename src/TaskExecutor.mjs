@@ -216,7 +216,6 @@ export class TaskExecutor {
 
       } catch (error) {
         if (error.message === 'INTERRUPTED_BY_USER') {
-          console.log("🛑 Interruption confirmed - stopping task...");
           shouldBreak = true;
           break;
         } else {
