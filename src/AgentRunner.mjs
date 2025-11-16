@@ -163,9 +163,9 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                 if (action.type === 'shell') {
                     try {
                         const commandLines = action.content.split('\n');
+
                         const printBlock = (title, lines) => {
-                            const header = `${basePrefix}========== ${title} ==========\n`;
-                            const footer = `${basePrefix}======== END ${title} ========\n`;
+                            const header = `${basePrefix} ${title} \n`;
                             process.stdout.write(header);
                             const maxLines = 4;
                             const limitedLines = lines.slice(0, maxLines);
@@ -175,7 +175,7 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                             if (lines.length > maxLines) {
                                 process.stdout.write(`${basePrefix}... (${lines.length - maxLines} more lines)\n`);
                             }
-                            process.stdout.write(footer);
+                            process.stdout.write('\n');
                         };
 
                         printBlock('COMMAND', ['>>>', ...commandLines, '<<<']);
