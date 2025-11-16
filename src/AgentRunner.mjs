@@ -4,6 +4,7 @@ import { dirname, join } from "path";
 import { DeepSeekAPI } from "./DeepSeekAPI.mjs";
 import { SessionManager } from "./SessionManager.mjs";
 import { CommandExecutor } from "./CommandExecutor.mjs";
+import { ConsoleOutput } from "./ConsoleOutput.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
