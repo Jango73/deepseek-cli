@@ -25,11 +25,11 @@ export class ConversationManager {
     const totalMessages = this.sessionManager.conversationHistory.length;
 
     if (totalMessages <= 10) {
-      ConsoleOutput.log('ℹ️ Conversation already has less than 10 messages, no compaction needed');
+      ConsoleOutput.info('ℹ️ Conversation already has less than 10 messages, no compaction needed');
       return false;
     }
 
-    ConsoleOutput.log(`⚙️ Compacting conversation (${totalMessages} messages)...`);
+    ConsoleOutput.info(`⚙️ Compacting conversation (${totalMessages} messages)...`);
 
     const fullConversation = this.sessionManager.conversationHistory.map(msg => 
       `${msg.role.toUpperCase()}:\n${msg.content}`
@@ -71,12 +71,12 @@ ${fullConversation}
 
       this.sessionManager.setConversationHistory([...firstMessages, summaryMessage, ...lastMessages]);
 
-      ConsoleOutput.log(`✅ Compacted conversation: ${totalMessages} → ${this.sessionManager.conversationHistory.length} messages`);
+      ConsoleOutput.info(`✅ Compacted conversation: ${totalMessages} → ${this.sessionManager.conversationHistory.length} messages`);
       this.sessionManager.saveSession();
       return true;
 
     } catch (error) {
-      ConsoleOutput.log('❌ AI compaction failed, using fallback method');
+      ConsoleOutput.info('❌ AI compaction failed, using fallback method');
       return this.compactConversationFallback();
     }
   }
@@ -93,7 +93,7 @@ ${fullConversation}
 
     this.sessionManager.setConversationHistory([...firstMessages, ...lastMessages]);
 
-    ConsoleOutput.log(`✅ Conversation compacted (fallback): ${totalMessages} → ${this.sessionManager.conversationHistory.length} messages`);
+    ConsoleOutput.info(`✅ Conversation compacted (fallback): ${totalMessages} → ${this.sessionManager.conversationHistory.length} messages`);
     this.sessionManager.saveSession();
     return true;
   }
@@ -105,7 +105,7 @@ ${fullConversation}
         const agentsPath = `${workingDirectory}/AGENTS.md`;
         if (fs.existsSync(agentsPath)) {
           agentsContent = fs.readFileSync(agentsPath, 'utf8');
-          ConsoleOutput.log('📖 Loaded AGENTS.md');
+          ConsoleOutput.info('📖 Loaded AGENTS.md');
         }
       } catch (error) {
         // Ignore if AGENTS.md doesn't exist

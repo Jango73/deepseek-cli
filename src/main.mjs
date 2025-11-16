@@ -108,9 +108,9 @@ const main = async () => {
         }
 
         if (agentInterrupted) {
-            ConsoleOutput.log('↩️ Agent interrupted. Back to the interactive CLI.');
+            ConsoleOutput.info('↩️ Agent interrupted. Back to the interactive CLI.');
         } else {
-            ConsoleOutput.log('✅ Agent completed. You can continue from the CLI.');
+            ConsoleOutput.info('✅ Agent completed. You can continue from the CLI.');
         }
     }
 
@@ -119,18 +119,18 @@ const main = async () => {
     const apiKey = getFlagValue('--api-key') || process.env.DEEPSEEK_API_KEY;
 
     if (!workingDir) {
-        ConsoleOutput.log('Missing working directory');
+        ConsoleOutput.info('Missing working directory');
         process.exit(1);
     }
 
     // Setup global signal handlers only for main process
     process.on('SIGINT', () => {
-        ConsoleOutput.log('\n🛑 Shutting down...');
+        ConsoleOutput.info('\n🛑 Shutting down...');
         process.exit(0);
     });
 
     process.on('SIGTERM', () => {
-        ConsoleOutput.log('\n🛑 Shutting down...');
+        ConsoleOutput.info('\n🛑 Shutting down...');
         process.exit(0);
     });
 

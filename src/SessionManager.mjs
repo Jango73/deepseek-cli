@@ -49,19 +49,19 @@ export class SessionManager {
         this.currentSessionDescription = data.currentSessionDescription || '';
         this.initialPrompt = data.initialPrompt || '';
         
-        ConsoleOutput.log('📁 Previous session loaded');
+        ConsoleOutput.info('📁 Previous session loaded');
         this.showSessionStatus();
         return true;
       } else {
         this.currentSessionId = this.generateSessionId();
-        ConsoleOutput.log('🆕 New session - no previous session found');
+        ConsoleOutput.info('🆕 New session - no previous session found');
         return false;
       }
     } catch (error) {
       this.conversationHistory = [];
       this.fullHistory = [];
       this.currentSessionId = this.generateSessionId();
-      ConsoleOutput.log('🆕 New session - error loading previous session');
+      ConsoleOutput.info('🆕 New session - error loading previous session');
       return false;
     }
   }
@@ -83,7 +83,7 @@ export class SessionManager {
 
   async archiveCurrentSession() {
     if (this.conversationHistory.length === 0) {
-      ConsoleOutput.log('ℹ️ No conversation to archive');
+      ConsoleOutput.info('ℹ️ No conversation to archive');
       return null;
     }
 
@@ -112,8 +112,8 @@ export class SessionManager {
     
     try {
       fs.writeFileSync(archiveFile, JSON.stringify(archiveData, null, 2));
-      ConsoleOutput.log(`💾 Session archived: ${sessionId}`);
-      ConsoleOutput.log(`   Description: ${description}`);
+      ConsoleOutput.info(`💾 Session archived: ${sessionId}`);
+      ConsoleOutput.info(`   Description: ${description}`);
       return sessionId;
     } catch (error) {
       ConsoleOutput.error('❌ Failed to archive session:', error.message);
@@ -135,7 +135,7 @@ export class SessionManager {
     this.currentSessionDescription = '';
     this.initialPrompt = '';
     this.saveSession();
-    ConsoleOutput.log('🧹 Current session cleared');
+    ConsoleOutput.info('🧹 Current session cleared');
   }
 
   clearAllSessions() {
@@ -145,7 +145,7 @@ export class SessionManager {
     // Clear all archives
     try {
       if (!fs.existsSync(this.archivesDirectory)) {
-        ConsoleOutput.log('ℹ️ No archives to clear');
+        ConsoleOutput.info('ℹ️ No archives to clear');
         return;
       }
 
@@ -159,7 +159,7 @@ export class SessionManager {
         }
       }
       
-      ConsoleOutput.log(`🗑️  Deleted ${deletedCount} archived sessions`);
+      ConsoleOutput.info(`🗑️  Deleted ${deletedCount} archived sessions`);
     } catch (error) {
       ConsoleOutput.error('❌ Error clearing archives:', error.message);
     }
@@ -182,7 +182,7 @@ export class SessionManager {
               commandCount: data.commandCount
             });
           } catch (error) {
-            ConsoleOutput.log(`⚠️  Corrupted archive: ${file}`);
+            ConsoleOutput.info(`⚠️  Corrupted archive: ${file}`);
           }
         }
       }
@@ -201,7 +201,7 @@ export class SessionManager {
     try {
       const archiveFile = `${this.archivesDirectory}/${sessionId}.json`;
       if (!fs.existsSync(archiveFile)) {
-        ConsoleOutput.log('❌ Archive not found');
+        ConsoleOutput.info('❌ Archive not found');
         return null;
       }
 
@@ -233,7 +233,7 @@ export class SessionManager {
     this.initialPrompt = archiveData.initialPrompt || '';
     this.saveSession();
 
-    ConsoleOutput.log(`🔄 Switched to archived session: ${archiveData.description}`);
+    ConsoleOutput.info(`🔄 Switched to archived session: ${archiveData.description}`);
     this.showSessionStatus();
     return true;
   }
@@ -243,21 +243,21 @@ export class SessionManager {
     const stepsCount = this.fullHistory.length;
     
     if (historyCount === 0) {
-      ConsoleOutput.log('🆕 New session - no conversation history');
+      ConsoleOutput.info('🆕 New session - no conversation history');
     } else {
-      ConsoleOutput.log('📁 Current session:');
-      ConsoleOutput.log(`   ID: ${this.currentSessionId}`);
+      ConsoleOutput.info('📁 Current session:');
+      ConsoleOutput.info(`   ID: ${this.currentSessionId}`);
       if (this.initialPrompt) {
-        ConsoleOutput.log(`   Task: ${this.initialPrompt}`);
+        ConsoleOutput.info(`   Task: ${this.initialPrompt}`);
       }
-      ConsoleOutput.log(`   Conversation: ${historyCount} messages`);
-      ConsoleOutput.log(`   Command history: ${stepsCount} steps`);
+      ConsoleOutput.info(`   Conversation: ${historyCount} messages`);
+      ConsoleOutput.info(`   Command history: ${stepsCount} steps`);
       
       const lastUserMsg = this.conversationHistory
         .filter(msg => msg.role === 'user')
         .pop();
       if (lastUserMsg) {
-        ConsoleOutput.log(`   Last action: "${this.truncateOutput(lastUserMsg.content, 1)}"`);
+        ConsoleOutput.info(`   Last action: "${this.truncateOutput(lastUserMsg.content, 1)}"`);
       }
     }
   }

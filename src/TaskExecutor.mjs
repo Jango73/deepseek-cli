@@ -51,7 +51,7 @@ export class TaskExecutor {
       }
 
       try {
-        ConsoleOutput.log("");
+        ConsoleOutput.info("");
 
         const apiAbortController = cliInstance?.createAIAbortController
           ? cliInstance.createAIAbortController()
@@ -69,7 +69,7 @@ export class TaskExecutor {
             cliInstance.releaseAIAbortController(apiAbortController);
           }
           if (error.name === 'AbortError' && (this.isInterrupted || cliInstance?.isInterrupted)) {
-            ConsoleOutput.log("🛑 Interruption confirmed - stopping task...");
+            ConsoleOutput.info("🛑 Interruption confirmed - stopping task...");
             shouldBreak = true;
             break;
           }
@@ -85,7 +85,7 @@ export class TaskExecutor {
         }
 
         if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted)) {
-          ConsoleOutput.log("🛑 Interruption confirmed - stopping task...");
+          ConsoleOutput.info("🛑 Interruption confirmed - stopping task...");
           shouldBreak = true;
           break;
         }
@@ -100,7 +100,7 @@ export class TaskExecutor {
         const actions = parsedResponse.actions || [];
 
         if (actions.length === 0) {
-          ConsoleOutput.log('❌ No valid command found');
+          ConsoleOutput.info('❌ No valid command found');
           currentPrompt = "Give me a valid shell command to execute";
           iteration++;
           continue;
@@ -112,7 +112,7 @@ export class TaskExecutor {
         for (const action of actions) {
           if (action.type === 'comment') {
             if (action.content) {
-              ConsoleOutput.log(action.content);
+              ConsoleOutput.info(action.content);
             }
             continue;
           }
@@ -128,7 +128,7 @@ export class TaskExecutor {
               });
               lastSummaryPrompt = `Delegated to agent ${action.agentId}. Continue.`;
             } else {
-              ConsoleOutput.log(`❌ Agent delegation unsupported: ${action.agentId}`);
+              ConsoleOutput.info(`❌ Agent delegation unsupported: ${action.agentId}`);
             }
             continue;
           }
@@ -171,7 +171,7 @@ export class TaskExecutor {
           }
 
           if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted) || result.interrupted) {
-            ConsoleOutput.log("🛑 Interruption confirmed - stopping task...");
+            ConsoleOutput.info("🛑 Interruption confirmed - stopping task...");
             shouldBreak = true;
             break;
           }
@@ -225,12 +225,12 @@ export class TaskExecutor {
     }
 
     if (this.isInterrupted) {
-      ConsoleOutput.log('🔄 Task interrupted - returning to main prompt...');
+      ConsoleOutput.info('🔄 Task interrupted - returning to main prompt...');
       this.isInterrupted = false;
     } else if (!shouldBreak && iteration > maxIterations) {
-      ConsoleOutput.log(`\n🔁 Maximum iterations (${maxIterations}) reached`);
+      ConsoleOutput.info(`\n🔁 Maximum iterations (${maxIterations}) reached`);
     } else if (!shouldBreak) {
-      ConsoleOutput.log(`\n✅ Task completed`);
+      ConsoleOutput.info(`\n✅ Task completed`);
     }
   }
 }

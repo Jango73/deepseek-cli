@@ -1,10 +1,6 @@
 export class ConsoleOutput {
-    static log(message) {
-        console.log(`${message}`);
-    }
-
     static info(message) {
-        console.log(`ℹ️  ${message}`);
+        console.log(`${message}`);
     }
 
     static success(message) {

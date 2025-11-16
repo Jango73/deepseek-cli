@@ -46,11 +46,11 @@ export class DeepSeekCLI {
       const rootContext = this.createAgentContext(this.defaultAgentId, { isRoot: true });
       this.agentStack.push(rootContext);
       this.applyContext(rootContext);
-      ConsoleOutput.log(`🚀 Agent "${this.currentAgentId}" instantiated (root context)`);
+      ConsoleOutput.info(`🚀 Agent "${this.currentAgentId}" instantiated (root context)`);
       this.logPromptInfo(rootContext);
       if (rootContext.initialPrompt) {
         const preview = this.generatePromptPreview(rootContext.initialPrompt);
-        ConsoleOutput.log(`🗒️ Task (${rootContext.agentId}): ${preview}`);
+        ConsoleOutput.info(`🗒️ Task (${rootContext.agentId}): ${preview}`);
       }
     } catch (error) {
       ConsoleOutput.error(`❌ Failed to initialize default agent: ${error.message}`);
@@ -83,10 +83,10 @@ export class DeepSeekCLI {
         config.systemPrompt = fileConfig.systemPrompt ? fileConfig.systemPrompt.join('\n') : "";
         config.agents = fileConfig.agents || [];
       } else {
-        ConsoleOutput.log('⚠️ Config file does not exist!');
+        ConsoleOutput.info('⚠️ Config file does not exist!');
       }
     } catch (error) {
-      ConsoleOutput.log('⚠️ Config file error:', error.message);
+      ConsoleOutput.info('⚠️ Config file error:', error.message);
     }
     
     return config;
@@ -188,24 +188,24 @@ export class DeepSeekCLI {
     const context = this.createAgentContext(agentId, { isRoot: this.agentStack.length === 0 });
     this.agentStack.push(context);
     this.applyContext(context);
-    ConsoleOutput.log(`🚀 Agent "${agentId}" instantiated`);
+    ConsoleOutput.info(`🚀 Agent "${agentId}" instantiated`);
     this.logPromptInfo(context);
     if (initialPrompt) {
       const preview = this.generatePromptPreview(initialPrompt);
-      ConsoleOutput.log(`🗒️ Task (${agentId}): ${preview}`);
+      ConsoleOutput.info(`🗒️ Task (${agentId}): ${preview}`);
     }
     context.autoPopOnComplete = Boolean(initialPrompt);
 
     if (!initialPrompt) {
-      ConsoleOutput.log(`🧠 Active agent: ${agentId}`);
+      ConsoleOutput.info(`🧠 Active agent: ${agentId}`);
       return;
     }
 
-    ConsoleOutput.log(`🚀 Agent "${agentId}" started with task: "${initialPrompt}"`);
+    ConsoleOutput.info(`🚀 Agent "${agentId}" started with task: "${initialPrompt}"`);
     await this.taskExecutor.executeTaskLoop(initialPrompt, this.systemPrompt, this);
 
     if (this.isInterrupted) {
-      ConsoleOutput.log(`⏸️ Agent "${agentId}" paused. Use /continue to resume or /pop to return to parent.`);
+      ConsoleOutput.info(`⏸️ Agent "${agentId}" paused. Use /continue to resume or /pop to return to parent.`);
     } else {
       await this.finalizeAutoAgentIfNeeded();
     }
@@ -213,7 +213,7 @@ export class DeepSeekCLI {
 
   async popAgentContext(options = {}) {
     if (this.agentStack.length <= 1) {
-      ConsoleOutput.log('ℹ️ Already at the root agent - nothing to pop');
+      ConsoleOutput.info('ℹ️ Already at the root agent - nothing to pop');
       return false;
     }
 
@@ -222,15 +222,15 @@ export class DeepSeekCLI {
       await context.sessionManager.archiveCurrentSession();
     }
     context.sessionManager.cleanupArtifacts();
-    ConsoleOutput.log(`🧹 Agent "${context.agentId}" destroyed`);
+    ConsoleOutput.info(`🧹 Agent "${context.agentId}" destroyed`);
 
     const parentContext = this.agentStack[this.agentStack.length - 1];
     this.applyContext(parentContext);
 
     if (!options.auto) {
-      ConsoleOutput.log(`⬅️ Returned to agent "${parentContext.agentId}"`);
+      ConsoleOutput.info(`⬅️ Returned to agent "${parentContext.agentId}"`);
     } else {
-      ConsoleOutput.log(`🏁 Agent completed. Back to "${parentContext.agentId}"`);
+      ConsoleOutput.info(`🏁 Agent completed. Back to "${parentContext.agentId}"`);
     }
 
     return true;
@@ -254,7 +254,7 @@ export class DeepSeekCLI {
       return;
     }
     this.isInterrupted = true;
-    ConsoleOutput.log('\n⏹️ Interruption requested. Stopping current action…');
+    ConsoleOutput.info('\n⏹️ Interruption requested. Stopping current action…');
     if (this.commandExecutor) {
       this.commandExecutor.killCurrentProcess();
     }
@@ -314,7 +314,7 @@ export class DeepSeekCLI {
   }
 
   showHelp() {
-    ConsoleOutput.log(`
+    ConsoleOutput.info(`
 Commands:
 - <task> : Execute debugging task
 - /continue : Continue from last session
@@ -338,17 +338,17 @@ Interruption:
   }
 
   showForbiddenCommands() {
-    ConsoleOutput.log('🚫 Forbidden commands:');
-    this.commandExecutor.forbiddenCommands.forEach(cmd => ConsoleOutput.log(`  - ${cmd}`));
+    ConsoleOutput.info('🚫 Forbidden commands:');
+    this.commandExecutor.forbiddenCommands.forEach(cmd => ConsoleOutput.info(`  - ${cmd}`));
   }
 
   showHistory() {
-    ConsoleOutput.log('📜 Full command history:');
+    ConsoleOutput.info('📜 Full command history:');
     this.sessionManager.fullHistory.forEach((entry, index) => {
-      ConsoleOutput.log(`\n--- Step ${index + 1} ---`);
-      ConsoleOutput.log(`Command: ${entry.command}`);
-      ConsoleOutput.log(`Result: ${entry.success ? 'SUCCESS' : 'FAILED'}`);
-      ConsoleOutput.log(`Output: ${this.sessionManager.truncateOutput(entry.output)}`);
+      ConsoleOutput.info(`\n--- Step ${index + 1} ---`);
+      ConsoleOutput.info(`Command: ${entry.command}`);
+      ConsoleOutput.info(`Result: ${entry.success ? 'SUCCESS' : 'FAILED'}`);
+      ConsoleOutput.info(`Output: ${this.sessionManager.truncateOutput(entry.output)}`);
     });
   }
 
@@ -356,30 +356,30 @@ Interruption:
     const archives = this.sessionManager.listArchives();
     
     if (archives.length === 0) {
-      ConsoleOutput.log('📂 No archived sessions found');
+      ConsoleOutput.info('📂 No archived sessions found');
       return;
     }
 
-    ConsoleOutput.log('📂 Archived sessions:');
-    ConsoleOutput.log('=' .repeat(80));
+    ConsoleOutput.info('📂 Archived sessions:');
+    ConsoleOutput.info('=' .repeat(80));
     
     archives.forEach((archive, index) => {
-      ConsoleOutput.log(`\n${index + 1}. ${archive.sessionId}`);
-      ConsoleOutput.log(`   Description: ${archive.description}`);
-      ConsoleOutput.log(`   Date: ${new Date(archive.timestamp).toLocaleString()}`);
-      ConsoleOutput.log(`   Messages: ${archive.messageCount}, Commands: ${archive.commandCount}`);
+      ConsoleOutput.info(`\n${index + 1}. ${archive.sessionId}`);
+      ConsoleOutput.info(`   Description: ${archive.description}`);
+      ConsoleOutput.info(`   Date: ${new Date(archive.timestamp).toLocaleString()}`);
+      ConsoleOutput.info(`   Messages: ${archive.messageCount}, Commands: ${archive.commandCount}`);
     });
   }
 
   async handleClear() {
     if (this.sessionManager.conversationHistory.length === 0) {
-      ConsoleOutput.log('ℹ️ No current session to archive');
+      ConsoleOutput.info('ℹ️ No current session to archive');
       this.sessionManager.clearCurrentSession();
       return;
     }
 
     await this.sessionManager.archiveAndClear();
-    ConsoleOutput.log('🆕 New session ready');
+    ConsoleOutput.info('🆕 New session ready');
   }
 
   async handleClearAll() {
@@ -391,9 +391,9 @@ Interruption:
         
         if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
           this.sessionManager.clearAllSessions();
-          ConsoleOutput.log('✅ All sessions and archives deleted');
+          ConsoleOutput.info('✅ All sessions and archives deleted');
         } else {
-          ConsoleOutput.log('❌ Operation cancelled');
+          ConsoleOutput.info('❌ Operation cancelled');
         }
         
         resolve();
@@ -410,14 +410,14 @@ Interruption:
       // Switch to specific archived session
       const success = await this.sessionManager.switchToArchive(sessionId);
       if (!success) {
-        ConsoleOutput.log(`❌ Could not switch to session: ${sessionId}`);
+        ConsoleOutput.info(`❌ Could not switch to session: ${sessionId}`);
       }
       return;
     }
 
     // Continue from current session (original behavior)
     if (this.sessionManager.conversationHistory.length === 0) {
-      ConsoleOutput.log('❌ No session to continue - start a new task first');
+      ConsoleOutput.info('❌ No session to continue - start a new task first');
       return;
     }
 
@@ -428,11 +428,11 @@ Interruption:
       .find(msg => msg.role === 'user');
       
     if (!lastUserMsg) {
-      ConsoleOutput.log('❌ No previous task to continue from');
+      ConsoleOutput.info('❌ No previous task to continue from');
       return;
     }
     
-    ConsoleOutput.log(`🔄 Continuing from: "${this.sessionManager.truncateOutput(lastUserMsg.content, 1)}"`);
+    ConsoleOutput.info(`🔄 Continuing from: "${this.sessionManager.truncateOutput(lastUserMsg.content, 1)}"`);
     
     let continuePrompt;
     if (this.sessionManager.fullHistory.length > 0) {
@@ -470,7 +470,7 @@ Interruption:
 
   async launchAgentFromAI(agentId, message) {
     try {
-      ConsoleOutput.log(`🤝 Delegating to agent "${agentId}" with task: "${message}"`);
+      ConsoleOutput.info(`🤝 Delegating to agent "${agentId}" with task: "${message}"`);
       const depth = Math.max(0, this.agentStack.length - 1);
       await runAgent(agentId, message, {
         configPath: this.configFile,
@@ -480,7 +480,7 @@ Interruption:
         workingDirectory: this.workingDirectory,
         interruptController: this.interruptController
       });
-      ConsoleOutput.log(`✅ Agent "${agentId}" completed`);
+      ConsoleOutput.info(`✅ Agent "${agentId}" completed`);
     } catch (error) {
       ConsoleOutput.error(`❌ Agent "${agentId}" failed: ${error.message}`);
     }
@@ -496,7 +496,7 @@ Interruption:
     let message = agentMatch[2]?.trim();
 
     if (!message) {
-      ConsoleOutput.log('❌ Agent command missing message content');
+      ConsoleOutput.info('❌ Agent command missing message content');
       return true;
     }
 
@@ -509,9 +509,9 @@ Interruption:
   }
 
   async startInteractiveSession() {
-    ConsoleOutput.log(`📁 Working directory: ${this.workingDirectory}`);
-    ConsoleOutput.log('Press ESC at any time to interrupt current task');
-    ConsoleOutput.log(`🧠 Active agent: ${this.currentAgentId}`);
+    ConsoleOutput.info(`📁 Working directory: ${this.workingDirectory}`);
+    ConsoleOutput.info('Press ESC at any time to interrupt current task');
+    ConsoleOutput.info(`🧠 Active agent: ${this.currentAgentId}`);
 
     try {
       while (true) {
@@ -539,7 +539,7 @@ Interruption:
               const message = rest ? rest.replace(/^"|"$/g, '') : null;
 
               if (!agentId) {
-                  ConsoleOutput.log('Usage: /agent <agentId> "<message optional>"');
+                  ConsoleOutput.info('Usage: /agent <agentId> "<message optional>"');
                   continue;
               }
 

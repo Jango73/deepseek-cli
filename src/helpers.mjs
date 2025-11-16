@@ -5,13 +5,13 @@ export const printBlock = (title, lines) => {
   const maxLineLength = Math.max(...lines.map(line => line.length));
   const border = '─'.repeat(Math.max(0, maxLineLength + 4));
   
-  ConsoleOutput.log(chalk.blue(`┌${border}┐`));
-  ConsoleOutput.log(chalk.blue(`│ ${chalk.bold(title)}${' '.repeat(Math.max(0, maxLineLength - title.length + 3))}│`));
-  ConsoleOutput.log(chalk.blue(`├${border}┤`));
+  ConsoleOutput.info(chalk.blue(`┌${border}┐`));
+  ConsoleOutput.info(chalk.blue(`│ ${chalk.bold(title)}${' '.repeat(Math.max(0, maxLineLength - title.length + 3))}│`));
+  ConsoleOutput.info(chalk.blue(`├${border}┤`));
   
   for (const line of lines) {
-    ConsoleOutput.log(chalk.blue(`│ ${line}${' '.repeat(Math.max(0, maxLineLength - line.length + 3))}│`));
+    ConsoleOutput.info(chalk.blue(`│ ${line}${' '.repeat(Math.max(0, maxLineLength - line.length + 3))}│`));
   }
   
-  ConsoleOutput.log(chalk.blue(`└${border}┘`));
+  ConsoleOutput.info(chalk.blue(`└${border}┘`));
 };
