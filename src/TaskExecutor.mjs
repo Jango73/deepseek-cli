@@ -151,7 +151,7 @@ export class TaskExecutor {
           const commandLines = action.content.split('\n');
 
 
-          ConsoleOutput.printBlock('COMMAND', ['>>>', ...commandLines, '<<<']);
+          ConsoleOutput.printBlock('COMMAND', commandLines);
           const result = await this.commandExecutor.executeCommand(action.content);
           executedSomething = true;
 

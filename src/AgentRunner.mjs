@@ -165,7 +165,7 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                     try {
                         const commandLines = action.content.split('\n');
 
-                        ConsoleOutput.printBlock('Command', [commandLines]);
+                        ConsoleOutput.printBlock('Command', commandLines);
                         
                         const result = await commandExecutor.executeCommand(action.content);
                         checkInterruption();
