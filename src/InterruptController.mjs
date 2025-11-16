@@ -1,4 +1,4 @@
-import readline from 'readline';
+import readline from "readline";
 
 export class InterruptController {
   constructor() {
@@ -13,15 +13,15 @@ export class InterruptController {
 
   start() {
     if (this.isActive) return;
-    process.stdin.setEncoding('utf8');
+    process.stdin.setEncoding("utf8");
 
     if (this.isTTY) {
       readline.emitKeypressEvents(process.stdin);
       process.stdin.setRawMode(true);
       process.stdin.resume();
-      process.stdin.on('keypress', this.handleKeypress);
+      process.stdin.on("keypress", this.handleKeypress);
     } else {
-      process.stdin.on('data', this.handleData);
+      process.stdin.on("data", this.handleData);
     }
 
     this.isActive = true;
@@ -30,25 +30,25 @@ export class InterruptController {
   stop() {
     if (!this.isActive) return;
     if (this.isTTY) {
-      process.stdin.removeListener('keypress', this.handleKeypress);
+      process.stdin.removeListener("keypress", this.handleKeypress);
       process.stdin.setRawMode(false);
     } else {
-      process.stdin.removeListener('data', this.handleData);
+      process.stdin.removeListener("data", this.handleData);
     }
     this.isActive = false;
   }
 
-  handleKeypress(str = '', key = {}) {
+  handleKeypress(str = "", key = {}) {
     if (this.paused) return;
-    const isEscape = key?.name === 'escape' || str === '\u001b';
+    const isEscape = key?.name === "escape" || str === "\u001b";
     if (isEscape) {
       this.triggerInterrupt();
     }
   }
 
-  handleData(chunk = '') {
+  handleData(chunk = "") {
     if (this.paused) return;
-    if (chunk === '\u001b') {
+    if (chunk === "\u001b") {
       this.triggerInterrupt();
     }
   }

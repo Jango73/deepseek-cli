@@ -3,36 +3,38 @@ import { ConsoleOutput } from "./ConsoleOutput.mjs";
 function isCreditError(status, errorMessage) {
   // Détecter les erreurs liées aux crédits/quotas
   const creditIndicators = [
-    'insufficient',
-    'credit',
-    'quota',
-    'balance',
-    'payment',
-    'limit exceeded',
-    'usage limit',
-    'billing',
-    'account suspended'
+    "insufficient",
+    "credit",
+    "quota",
+    "balance",
+    "payment",
+    "limit exceeded",
+    "usage limit",
+    "billing",
+    "account suspended",
   ];
-  
+
   const lowerMessage = errorMessage.toLowerCase();
-  
+
   // Vérifier les codes d'erreur spécifiques
-  if (status === 429) return 'Rate limit exceeded - too many requests';
-  if (status === 402) return 'Payment required - check your billing';
+  if (status === 429) return "Rate limit exceeded - too many requests";
+  if (status === 402) return "Payment required - check your billing";
   if (status === 403) {
     // Vérifier si c'est une erreur de quota/credit dans le message
-    if (creditIndicators.some(indicator => lowerMessage.includes(indicator))) {
-      return 'Insufficient credits or quota exceeded';
+    if (
+      creditIndicators.some((indicator) => lowerMessage.includes(indicator))
+    ) {
+      return "Insufficient credits or quota exceeded";
     }
   }
-  
+
   // Vérifier les messages d'erreur spécifiques
   for (const indicator of creditIndicators) {
     if (lowerMessage.includes(indicator)) {
       return `API error related to credits/quotas: ${errorMessage}`;
     }
   }
-  
+
   return null;
 }
 
@@ -43,11 +45,11 @@ export class DeepSeekAPI {
 
   getApiConfig() {
     return {
-      url: 'https://api.deepseek.com/chat/completions',
-      model: 'deepseek-coder',
+      url: "https://api.deepseek.com/chat/completions",
+      model: "deepseek-coder",
       maxTokens: 1000,
       temperature: 0.1,
-      timeout: 30000
+      timeout: 30000,
     };
   }
 
@@ -59,7 +61,9 @@ export class DeepSeekAPI {
       let intervalHandle = null;
       const renderIndicator = () => {
         const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-        process.stdout.write(`\r⏳ Waiting for AI response… ${elapsedSeconds}s`);
+        process.stdout.write(
+          `\r⏳ Waiting for AI response… ${elapsedSeconds}s`,
+        );
       };
       const timeoutHandle = setTimeout(() => {
         indicatorActive = true;
@@ -73,14 +77,14 @@ export class DeepSeekAPI {
           clearInterval(intervalHandle);
         }
         if (indicatorActive) {
-          const clearLine = '\r' + ' '.repeat(60) + '\r';
+          const clearLine = "\r" + " ".repeat(60) + "\r";
           process.stdout.write(clearLine);
         }
       };
     })();
-    
-    const finalMessages = systemPrompt 
-      ? [{ role: 'system', content: systemPrompt }, ...messages]
+
+    const finalMessages = systemPrompt
+      ? [{ role: "system", content: systemPrompt }, ...messages]
       : messages;
 
     const controller = abortController || new AbortController();
@@ -90,54 +94,58 @@ export class DeepSeekAPI {
         controller.abort();
       }
     }, apiConfig.timeout);
-    
+
     try {
       const response = await fetch(apiConfig.url, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           model: apiConfig.model,
           messages: finalMessages,
           max_tokens: apiConfig.maxTokens,
-          temperature: apiConfig.temperature
+          temperature: apiConfig.temperature,
         }),
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-const creditError = isCreditError(response.status, response.statusText);
-if (creditError) {
-  throw new Error(`❌ ${creditError}. Please check your DeepSeek account balance and billing settings.`);
-}
-  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const creditError = isCreditError(response.status, response.statusText);
+        if (creditError) {
+          throw new Error(
+            `❌ ${creditError}. Please check your DeepSeek account balance and billing settings.`,
+          );
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
-      
+
       if (data.error) {
-const creditError = isCreditError(response.status, data.error.message);
-if (creditError) {
-  throw new Error(`❌ ${creditError}. Please check your DeepSeek account balance and billing settings.`);
-}
-  throw new Error(`API Error: ${data.error.message}`);
+        const creditError = isCreditError(response.status, data.error.message);
+        if (creditError) {
+          throw new Error(
+            `❌ ${creditError}. Please check your DeepSeek account balance and billing settings.`,
+          );
+        }
+        throw new Error(`API Error: ${data.error.message}`);
       }
-      
+
       if (!data.choices || !data.choices[0]) {
-        throw new Error('Invalid response format from API');
+        throw new Error("Invalid response format from API");
       }
-      
+
       return data.choices[0]?.message?.content;
     } catch (error) {
       clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
-        ConsoleOutput.error('API request aborted');
+      if (error.name === "AbortError") {
+        ConsoleOutput.error("API request aborted");
       } else {
-        ConsoleOutput.error('API call failed:', error.message);
+        ConsoleOutput.error("API call failed:", error.message);
       }
       throw error;
     } finally {
