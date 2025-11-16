@@ -1,4 +1,4 @@
-import { printBlock } from './helpers.mjs';
+
 import { ConsoleOutput } from "./ConsoleOutput.mjs";
 
 export class TaskExecutor {
@@ -151,7 +151,7 @@ export class TaskExecutor {
           const commandLines = action.content.split('\n');
 
 
-          printBlock('COMMAND', ['>>>', ...commandLines, '<<<']);
+          ConsoleOutput.printBlock('COMMAND', ['>>>', ...commandLines, '<<<']);
           const result = await this.commandExecutor.executeCommand(action.content);
           executedSomething = true;
 
@@ -184,7 +184,7 @@ export class TaskExecutor {
 
           const outputLines = (result.output || 'No output').split('\n');
           const outcome = result.success ? 'OUTPUT (SUCCESS)' : 'OUTPUT (FAILURE)';
-          printBlock(outcome, outputLines);
+          ConsoleOutput.printBlock(outcome, outputLines);
 
           lastSummaryPrompt = this.commandExecutor.createSummaryPrompt(
             action.content, 

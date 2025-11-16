@@ -4,7 +4,7 @@ import { dirname, join } from 'path';
 import { DeepSeekAPI } from './DeepSeekAPI.mjs';
 import { SessionManager } from './SessionManager.mjs';
 import { CommandExecutor } from './CommandExecutor.mjs';
-import { printBlock } from './helpers.mjs';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -165,7 +165,7 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                     try {
                         const commandLines = action.content.split('\n');
 
-                        printBlock('Command', [commandLines]);
+                        ConsoleOutput.printBlock('Command', [commandLines]);
                         
                         const result = await commandExecutor.executeCommand(action.content);
                         checkInterruption();
@@ -186,7 +186,7 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                         
                         const outputLines = (result.output || 'No output').split('\n');
                         const outcome = result.success ? 'OUTPUT (SUCCESS)' : 'OUTPUT (FAILURE)';
-                        printBlock(outcome, outputLines);
+                        ConsoleOutput.printBlock(outcome, outputLines);
                         
                         const resultMessage = commandExecutor.createSummaryPrompt(
                           action.content,
