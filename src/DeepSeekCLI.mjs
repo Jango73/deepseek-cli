@@ -40,7 +40,6 @@ export class DeepSeekCLI {
     this.interruptController = interruptController || new InterruptController();
     this.interruptController.start();
     this.interruptCleanup = this.interruptController.onInterrupt(() => this.handleInterruptSignal());
-    this.currentAIRequestAbortController = null;
 
     try {
       const rootContext = this.createAgentContext(this.defaultAgentId, { isRoot: true });
@@ -62,6 +61,60 @@ export class DeepSeekCLI {
       terminal: false,
       output: process.stdout
     });
+  }
+  handleInterruptSignal() {
+    if (this.isInterrupted) {
+      return;
+    }
+    this.isInterrupted = true;
+    ConsoleOutput.info('\n⏹️ Interruption requested. Stopping ALL agents in the stack…');
+    
+    // Interrompre tous les agents dans le stack
+    for (let i = this.agentStack.length - 1; i >= 0; i--) {
+      const context = this.agentStack[i];
+      ConsoleOutput.info(`🛑 Stopping agent "${context.agentId}"...`);
+      
+      // Interrompre le taskExecutor de chaque agent
+      if (context.taskExecutor) {
+        context.taskExecutor.interrupt();
+      }
+      
+      // Interrompre le commandExecutor de chaque agent
+      if (context.commandExecutor) {
+        context.commandExecutor.killCurrentProcess();
+      }
+    }
+    
+    // Interrompre la requête AI en cours
+    if (this.currentAIRequestAbortController) {
+      this.currentAIRequestAbortController.abort();
+      this.currentAIRequestAbortController = null;
+    }
+    
+    // Nettoyer tous les agents sauf le root
+    this.cleanupAgentStack();
+  }
+
+  cleanupAgentStack() {
+    // Garder seulement l'agent root, supprimer tous les autres
+    while (this.agentStack.length > 1) {
+      const context = this.agentStack.pop();
+      ConsoleOutput.info(`🧹 Destroying agent "${context.agentId}"`);
+      if (context.sessionManager && context.sessionManager.conversationHistory && context.sessionManager.conversationHistory.length > 0) {
+        context.sessionManager.archiveCurrentSession().catch(() => {});
+      }
+      if (context.sessionManager) {
+        context.sessionManager.cleanupArtifacts();
+      }
+    }
+    
+    // Réappliquer le contexte root
+    if (this.agentStack.length > 0) {
+      this.applyContext(this.agentStack[0]);
+      ConsoleOutput.info(`⬅️ Returned to root agent "${this.currentAgentId}"`);
+    }
+    
+    this.isInterrupted = false;
   }
 
   loadConfig() {
@@ -249,23 +302,6 @@ export class DeepSeekCLI {
     await this.popAgentContext({ auto: true });
   }
 
-  handleInterruptSignal() {
-    if (this.isInterrupted) {
-      return;
-    }
-    this.isInterrupted = true;
-    ConsoleOutput.info('\n⏹️ Interruption requested. Stopping current action…');
-    if (this.commandExecutor) {
-      this.commandExecutor.killCurrentProcess();
-    }
-    if (this.taskExecutor) {
-      this.taskExecutor.interrupt();
-    }
-    if (this.currentAIRequestAbortController) {
-      this.currentAIRequestAbortController.abort();
-      this.currentAIRequestAbortController = null;
-    }
-  }
 
   cleanupInterruptHandling() {
     if (this.interruptCleanup) {

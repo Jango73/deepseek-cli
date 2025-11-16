@@ -94,7 +94,7 @@ export class TaskExecutor {
         if (parsedResponse.diagnostics?.unclosedBlocks?.length) {
           for (const block of parsedResponse.diagnostics.unclosedBlocks) {
             const preview = block.preview.replace(/\s+/g, ' ').trim();
-            ConsoleOutput.warn(`⚠️ Incomplete command block detected (missing <<<). Preview: ${preview}`);
+            ConsoleOutput.warning(`⚠️ Incomplete command block detected (missing <<<). Preview: ${preview}`);
           }
         }
         const actions = parsedResponse.actions || [];

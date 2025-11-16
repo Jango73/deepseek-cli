@@ -1,4 +1,40 @@
 import { ConsoleOutput } from "./ConsoleOutput.mjs";
+// Fonction utilitaire pour détecter les erreurs de crédits insuffisants
+function isCreditError(status, errorMessage) {
+  // Détecter les erreurs liées aux crédits/quotas
+  const creditIndicators = [
+    'insufficient',
+    'credit',
+    'quota',
+    'balance',
+    'payment',
+    'limit exceeded',
+    'usage limit',
+    'billing',
+    'account suspended'
+  ];
+  
+  const lowerMessage = errorMessage.toLowerCase();
+  
+  // Vérifier les codes d'erreur spécifiques
+  if (status === 429) return 'Rate limit exceeded - too many requests';
+  if (status === 402) return 'Payment required - check your billing';
+  if (status === 403) {
+    // Vérifier si c'est une erreur de quota/credit dans le message
+    if (creditIndicators.some(indicator => lowerMessage.includes(indicator))) {
+      return 'Insufficient credits or quota exceeded';
+    }
+  }
+  
+  // Vérifier les messages d'erreur spécifiques
+  for (const indicator of creditIndicators) {
+    if (lowerMessage.includes(indicator)) {
+      return `API error related to credits/quotas: ${errorMessage}`;
+    }
+  }
+  
+  return null;
+}
 
 export class DeepSeekAPI {
   constructor(apiKey) {
@@ -74,13 +110,21 @@ export class DeepSeekAPI {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+const creditError = isCreditError(response.status, response.statusText);
+if (creditError) {
+  throw new Error(`❌ ${creditError}. Please check your DeepSeek account balance and billing settings.`);
+}
+  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
       
       if (data.error) {
-        throw new Error(`API Error: ${data.error.message}`);
+const creditError = isCreditError(response.status, data.error.message);
+if (creditError) {
+  throw new Error(`❌ ${creditError}. Please check your DeepSeek account balance and billing settings.`);
+}
+  throw new Error(`API Error: ${data.error.message}`);
       }
       
       if (!data.choices || !data.choices[0]) {
