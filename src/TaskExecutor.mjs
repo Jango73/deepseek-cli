@@ -1,4 +1,7 @@
+import { printBlock } from './helpers.mjs';
+
 export class TaskExecutor {
+
   constructor(conversationManager, commandExecutor, sessionManager) {
     this.conversationManager = conversationManager;
     this.commandExecutor = commandExecutor;
@@ -146,18 +149,6 @@ export class TaskExecutor {
 
           const commandLines = action.content.split('\n');
 
-          const printBlock = (title, lines) => {
-            console.log(`${title}`); // header
-            const maxLines = 4;
-            const limitedLines = lines.slice(0, maxLines);
-            for (const line of limitedLines) {
-              console.log(line);
-            }
-            if (lines.length > maxLines) {
-              console.log(`... (${lines.length - maxLines} more lines)`);
-            }
-            console.log('\n');
-          };
 
           printBlock('COMMAND', ['>>>', ...commandLines, '<<<']);
           const result = await this.commandExecutor.executeCommand(action.content);

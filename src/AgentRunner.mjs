@@ -4,6 +4,7 @@ import { dirname, join } from 'path';
 import { DeepSeekAPI } from './DeepSeekAPI.mjs';
 import { SessionManager } from './SessionManager.mjs';
 import { CommandExecutor } from './CommandExecutor.mjs';
+import { printBlock } from './helpers.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -164,21 +165,7 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                     try {
                         const commandLines = action.content.split('\n');
 
-                        const printBlock = (title, lines) => {
-                            const header = `${basePrefix} ${title} \n`;
-                            process.stdout.write(header);
-                            const maxLines = 4;
-                            const limitedLines = lines.slice(0, maxLines);
-                            for (const line of limitedLines) {
-                                process.stdout.write(`${basePrefix}${line}\n`);
-                            }
-                            if (lines.length > maxLines) {
-                                process.stdout.write(`${basePrefix}... (${lines.length - maxLines} more lines)\n`);
-                            }
-                            process.stdout.write('\n');
-                        };
-
-                        printBlock('COMMAND', ['>>>', ...commandLines, '<<<']);
+                        printBlock('Command', [commandLines]);
                         
                         const result = await commandExecutor.executeCommand(action.content);
                         checkInterruption();
