@@ -217,7 +217,7 @@ export class TaskExecutor {
           shouldBreak = true;
           break;
         } else {
-          ConsoleOutput.error(`❌ Error: ${error.message}`);
+          ConsoleOutput.error(`Error: ${error.message}`);
           currentPrompt = `Error: ${error.message}. What next?`;
           iteration++;
         }

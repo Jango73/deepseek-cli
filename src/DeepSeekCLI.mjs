@@ -25,7 +25,7 @@ export class DeepSeekCLI {
     } else if (this.config.apiKey) {
       this.apiKey = this.config.apiKey;
     } else {
-      ConsoleOutput.error('❌ No API key provided');
+      ConsoleOutput.error('No API key provided');
       process.exit(1);
     }
     
@@ -53,7 +53,7 @@ export class DeepSeekCLI {
         ConsoleOutput.info(`🗒️ Task (${rootContext.agentId}): ${preview}`);
       }
     } catch (error) {
-      ConsoleOutput.error(`❌ Failed to initialize default agent: ${error.message}`);
+      ConsoleOutput.error(`Failed to initialize default agent: ${error.message}`);
       process.exit(1);
     }
     
@@ -457,7 +457,7 @@ Interruption:
       try {
           await this.pushAgentContext(agentId, message);
       } catch (err) {
-          ConsoleOutput.error(`❌ Failed to launch agent "${agentId}": ${err.message}`);
+          ConsoleOutput.error(`Failed to launch agent "${agentId}": ${err.message}`);
           if (this.agentStack.length > 1 && this.currentAgentId === agentId) {
               const failedContext = this.agentStack.pop();
               failedContext.sessionManager.cleanupArtifacts();
@@ -482,7 +482,7 @@ Interruption:
       });
       ConsoleOutput.info(`✅ Agent "${agentId}" completed`);
     } catch (error) {
-      ConsoleOutput.error(`❌ Agent "${agentId}" failed: ${error.message}`);
+      ConsoleOutput.error(`Agent "${agentId}" failed: ${error.message}`);
     }
   }
 
@@ -601,7 +601,7 @@ Interruption:
           }
 
         } catch (error) {
-          ConsoleOutput.error(`❌ Session error: ${error.message}`);
+          ConsoleOutput.error(`Session error: ${error.message}`);
         }
       }
     } finally {

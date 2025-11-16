@@ -116,7 +116,7 @@ export class SessionManager {
       ConsoleOutput.info(`   Description: ${description}`);
       return sessionId;
     } catch (error) {
-      ConsoleOutput.error('❌ Failed to archive session:', error.message);
+      ConsoleOutput.error('Failed to archive session:', error.message);
       return null;
     }
   }
@@ -161,7 +161,7 @@ export class SessionManager {
       
       ConsoleOutput.info(`🗑️  Deleted ${deletedCount} archived sessions`);
     } catch (error) {
-      ConsoleOutput.error('❌ Error clearing archives:', error.message);
+      ConsoleOutput.error('Error clearing archives:', error.message);
     }
   }
 
@@ -192,7 +192,7 @@ export class SessionManager {
       
       return archives;
     } catch (error) {
-      ConsoleOutput.error('❌ Error listing archives:', error.message);
+      ConsoleOutput.error('Error listing archives:', error.message);
       return [];
     }
   }
@@ -208,7 +208,7 @@ export class SessionManager {
       const data = JSON.parse(fs.readFileSync(archiveFile, 'utf8'));
       return data;
     } catch (error) {
-      ConsoleOutput.error('❌ Error loading archive:', error.message);
+      ConsoleOutput.error('Error loading archive:', error.message);
       return null;
     }
   }

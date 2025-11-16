@@ -96,7 +96,7 @@ export class CommandExecutor {
               const success = error === null;
 
               if (error) {
-                  ConsoleOutput.error(`🔴 Command failed with exit code ${error.code}`);
+                  ConsoleOutput.error(`Command failed with exit code ${error.code}`);
               }
 
               resolve({ 

@@ -91,9 +91,9 @@ export class DeepSeekAPI {
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        ConsoleOutput.error('❌ API request aborted');
+        ConsoleOutput.error('API request aborted');
       } else {
-        ConsoleOutput.error('❌ API call failed:', error.message);
+        ConsoleOutput.error('API call failed:', error.message);
       }
       throw error;
     } finally {
