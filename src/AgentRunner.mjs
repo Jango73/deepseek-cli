@@ -167,8 +167,13 @@ export async function runAgent(agentId, inputMessage = '', opts = {}) {
                             const header = `${basePrefix}========== ${title} ==========\n`;
                             const footer = `${basePrefix}======== END ${title} ========\n`;
                             process.stdout.write(header);
-                            for (const line of lines) {
+                            const maxLines = 4;
+                            const limitedLines = lines.slice(0, maxLines);
+                            for (const line of limitedLines) {
                                 process.stdout.write(`${basePrefix}${line}\n`);
+                            }
+                            if (lines.length > maxLines) {
+                                process.stdout.write(`${basePrefix}... (${lines.length - maxLines} more lines)\n`);
                             }
                             process.stdout.write(footer);
                         };

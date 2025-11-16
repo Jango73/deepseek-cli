@@ -1,11 +1,18 @@
 {
   "name": "deepseek-cli",
   "version": "1.0.0",
-  "description": "## TL;DR",
-  "keywords": [],
-  "author": "Jango73",
-  "license": "GPLv3",
-  "dependencies": {
-    "dotenv": "^16.4.5"
+  "description": "CLI agent for deepseek API",
+  "type": "module",
+  "main": "src/DeepSeekAPI.mjs",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.23.0",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0"
   }
 }

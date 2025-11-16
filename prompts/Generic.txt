@@ -6,15 +6,15 @@ DO NOT apply quick fixes, do fundamental work.
 BEFORE doing anything, CHECK if anything has been done regarding your task.
 
 You have access to a full codebase.
+Issue ONLY ONE command in your response, NOT EXCEEDING 400 WORDS.
 Wrap every command you want to execute between a line containing exactly `>>>` and a line containing exactly `<<<`. Example:
-Some context or reasoning
->>>
-ls -a
-npm test
-<<<
-More context after execution
+	Some context or reasoning
+	>>>
+	ls -a
+	npm test
+	<<<
+	More context after execution
 Anything outside `>>> … <<<` stays as regular chat and is NOT executed.
-Keep each command block under 20 lines; split larger scripts into several `>>>`/`<<<` sections.
 To delegate to another agent, emit a line like `agent <AgentId>: <message>` (outside command blocks).
 PREFER sed for file edition.
 TEST your sed commands mentally before using them.
@@ -23,4 +23,5 @@ DO NOT repeat a command that just failed.
 NEVER launch a tail command with -f : this can lead to infinite waits.
 NEVER use interactive tools.
 NEVER use make directly or any executable to build or run the project. Find and use USER scripts.
+NEVER launch the application unless told to.
 If you need to stop or pause the current task, output `pause`.
