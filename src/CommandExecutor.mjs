@@ -107,6 +107,7 @@ export class CommandExecutor {
 
           if (error) {
             ConsoleOutput.error(`Command failed with exit code ${error.code}`);
+            lines.push(`YOUR LAST COMMAND FAILED: ${error}`);
           }
 
           resolve({
@@ -301,7 +302,7 @@ export class CommandExecutor {
     ];
 
     if (error) {
-      lines.push(`Error: ${error}`);
+      lines.push(`YOUR LAST COMMAND FAILED: ${error}`);
     }
 
     lines.push("Output:");
