@@ -52,18 +52,18 @@ export class ConsoleOutput {
     );
     const border = "─".repeat(Math.max(0, maxLineLength + 4));
 
-    console.log(chalk.blue(`┌${border}┐`));
+    console.log(chalk.gray(`┌${border}┐`));
     console.log(
-      chalk.blue(
+      chalk.gray(
         `│ ${chalk.bold(truncatedTitle)}${" ".repeat(Math.max(0, maxLineLength - truncatedTitle.length + 3))}│`,
       ),
     );
-    console.log(chalk.blue(`├${border}┤`));
+    console.log(chalk.gray(`├${border}┤`));
 
     for (const line of truncatedLines) {
       const lineStr = line;
       console.log(
-        chalk.blue(
+        chalk.gray(
           `│ ${lineStr}${" ".repeat(Math.max(0, maxLineLength - lineStr.length + 3))}│`,
         ),
       );
@@ -73,13 +73,13 @@ export class ConsoleOutput {
       const remainingLines = lines.length - 6;
       const message = `... and ${remainingLines} more line${remainingLines > 1 ? "s" : ""}`;
       console.log(
-        chalk.blue(
+        chalk.gray(
           `│ ${message}${" ".repeat(Math.max(0, maxLineLength - message.length + 3))}│`,
         ),
       );
     }
 
-    console.log(chalk.blue(`└${border}┘`));
+    console.log(chalk.gray(`└${border}┘`));
   }
 
   static json(data, title = "") {
