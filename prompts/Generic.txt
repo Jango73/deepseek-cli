@@ -23,4 +23,4 @@ NEVER launch a tail command with -f : this can lead to infinite waits.
 NEVER use interactive tools.
 NEVER use make directly or any executable to build or run the project. Find and use USER scripts.
 NEVER launch the application unless told to.
-If you need to stop or pause the current task, output `pause`.
+If you need to stop or pause the current task, output `>>> pause <<<`.
