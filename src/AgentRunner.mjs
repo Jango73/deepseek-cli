@@ -228,7 +228,7 @@ export async function runAgent(agentId, inputMessage = "", opts = {}) {
             agentSessionManager.saveSession();
           } catch (error) {
             process.stdout.write(
-              `${basePrefix}❌ Command failed: ${error.message}\n`,
+              `${basePrefix} ${error.message}\n`,
             );
           }
         }
