@@ -317,7 +317,7 @@ export class DeepSeekCLI {
 
     if (this.isInterrupted) {
       ConsoleOutput.info(
-        `⏸️ Agent "${agentId}" paused. Use /continue to resume or /pop to return to parent.`,
+        `⏸️ Agent "${agentId}" paused. Use /resume to resume or /pop to return to parent.`,
       );
     } else {
       await this.finalizeAutoAgentIfNeeded();
@@ -417,8 +417,8 @@ export class DeepSeekCLI {
     ConsoleOutput.info(`
 Commands:
 - <task> : Execute debugging task
-- /continue : Continue from last session
-- /continue <session-id> : Switch to archived session
+- /resume : Continue from last session
+- /resume <session-id> : Switch to archived session
 - /clear : Archive current session and start new one
 - /clear-all : Delete all sessions and archives
 - /agent <id> "<message>" : Activate another agent (message optional)
@@ -653,7 +653,7 @@ Interruption:
           }
 
           // Handle commands with parameters
-          if (userPrompt.startsWith("/continue ")) {
+          if (userPrompt.startsWith("/resume ")) {
             const sessionId = userPrompt.substring(10).trim();
             await this.handleContinue(sessionId);
             continue;
@@ -723,7 +723,7 @@ Interruption:
               this.showArchives();
               continue;
 
-            case "/continue":
+            case "/resume":
               await this.handleContinue();
               continue;
 

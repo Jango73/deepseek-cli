@@ -125,8 +125,8 @@ The launcher pauses until the called agent completes its mission.
   `/history`                  Show full command history
   `/status`                   Display current session status
   `/archives`                 List archived sessions
-  `/continue`                 Resume last session
-  `/continue <id>`            Load a specific archived session
+  `/resume`                 Resume last session
+  `/resume <id>`            Load a specific archived session
   `/agent <id> "<message>"`   Launch another agent interactively
   `/forbidden`                List forbidden commands
   `/quit` or `/exit`          Exit the application
