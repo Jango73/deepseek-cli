@@ -188,7 +188,7 @@ export class TaskExecutor {
               this.commandExecutor.constructor?.MAX_COMMAND_LINES || 20;
             const warningMessage = [
               `Your command contained ${result.lineCount} lines. The maximum allowed is ${maxLines}.`,
-              "Split large scripts into multiple >>>/<<< blocks (each ≤20 lines) before resubmitting.",
+              "Split large scripts into multiple >>>/<<< blocks (each ≤50 lines) before resubmitting.",
             ].join(" ");
             this.sessionManager.addConversationMessage(
               "system",

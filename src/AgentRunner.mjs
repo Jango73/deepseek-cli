@@ -195,7 +195,7 @@ export async function runAgent(agentId, inputMessage = "", opts = {}) {
             if (result.error === "COMMAND_TOO_LONG") {
               const warningMessage = [
                 `Your command contained ${result.lineCount} lines. The maximum allowed is ${CommandExecutor.MAX_COMMAND_LINES}.`,
-                "Split large scripts into multiple >>>/<<< blocks (each ≤20 lines) before resubmitting.",
+                "Split large scripts into multiple >>>/<<< blocks (each ≤50 lines) before resubmitting.",
               ].join(" ");
               agentSessionManager.addConversationMessage(
                 "system",

@@ -15,6 +15,7 @@ Wrap every command you want to execute between a line containing exactly `>>>` a
 	<<<
 	More context after execution
 Anything outside `>>> … <<<` stays as regular chat and is NOT executed.
+Limit each command block to 50 lines maximum; split longer scripts across multiple `>>>`/`<<<` blocks.
 PREFER sed for file edition.
 TEST your sed commands mentally before using them.
 If an edit command fails 2 times, check if the file is empty, and if it is, RESTORE it.
