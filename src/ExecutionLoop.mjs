@@ -40,7 +40,7 @@ export class ExecutionLoop {
     }
 
     while (iteration <= maxIterations && !shouldBreak && !this.isInterrupted) {
-      // Vérifier l'interruption au début de chaque itération
+      // Check interruption at the beginning of each iteration
       if (cliInstance && cliInstance.isInterrupted) {
         this.isInterrupted = true;
         break;
@@ -168,12 +168,12 @@ export class ExecutionLoop {
               });
               lastSummaryPrompt = `Delegated to agent ${action.agentId}. Continue.`;
             } else if (agentId) {
-              // Dans AgentRunner, on délègue directement
+              // In AgentRunner, we delegate directly
               executedSomething = true;
               if (agentId) {
                 process.stdout.write(`${basePrefix}🤝 Delegating to agent "${action.agentId}"\n`);
               }
-              // La délégation sera gérée par l'appelant via onAgentDelegation
+              // Delegation will be handled by the caller via onAgentDelegation
               lastSummaryPrompt = `Delegated to agent ${action.agentId}. Continue.`;
             }
             continue;
@@ -258,7 +258,7 @@ export class ExecutionLoop {
           break;
         }
 
-        // Vérifier si la réponse indique la fin de l'exécution
+        // Check if the response indicates the end of execution
         const trimmed = response.trim();
         if (/^(>>\s*)?(exit|pause|done)$/i.test(trimmed)) {
           if (agentId) {

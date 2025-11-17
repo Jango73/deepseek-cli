@@ -31,7 +31,7 @@ export class AgentExecutor {
       proc.stdout.on("data", (data) => {
         const output = data.toString();
         stdout += output;
-        // Afficher la sortie avec l'indentation appropriée
+        // Display output with appropriate indentation
         const prefix = depth > 0 ? "│ ".repeat(depth) : "";
         process.stdout.write(`${prefix}${output}`);
       });

@@ -97,7 +97,7 @@ export class DeepSeekCLI {
       }
     }
 
-    // Interrompre la requête AI en cours
+    // Interrupt the current AI request
     if (this.currentAIRequestAbortController) {
       this.currentAIRequestAbortController.abort();
       this.currentAIRequestAbortController = null;
@@ -124,7 +124,7 @@ export class DeepSeekCLI {
       }
     }
 
-    // Réappliquer le contexte root
+    // Reapply the root context
     if (this.agentStack.length > 0) {
       this.applyContext(this.agentStack[0]);
       ConsoleOutput.info(`⬅️ Returned to root agent "${this.currentAgentId}"`);

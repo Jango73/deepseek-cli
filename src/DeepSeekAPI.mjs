@@ -1,7 +1,7 @@
 import { ConsoleOutput } from "./ConsoleOutput.mjs";
-// Fonction utilitaire pour détecter les erreurs de crédits insuffisants
+// Utility function to detect insufficient credit errors
 function isCreditError(status, errorMessage) {
-  // Détecter les erreurs liées aux crédits/quotas
+  // Detect errors related to credits/quotas
   const creditIndicators = [
     "insufficient",
     "credit",
@@ -16,11 +16,11 @@ function isCreditError(status, errorMessage) {
 
   const lowerMessage = errorMessage.toLowerCase();
 
-  // Vérifier les codes d'erreur spécifiques
+  // Check specific error codes
   if (status === 429) return "Rate limit exceeded - too many requests";
   if (status === 402) return "Payment required - check your billing";
   if (status === 403) {
-    // Vérifier si c'est une erreur de quota/credit dans le message
+    // Check if it's a quota/credit error in the message
     if (
       creditIndicators.some((indicator) => lowerMessage.includes(indicator))
     ) {
@@ -28,7 +28,7 @@ function isCreditError(status, errorMessage) {
     }
   }
 
-  // Vérifier les messages d'erreur spécifiques
+  // Check specific error messages
   for (const indicator of creditIndicators) {
     if (lowerMessage.includes(indicator)) {
       return `API error related to credits/quotas: ${errorMessage}`;

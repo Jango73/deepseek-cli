@@ -49,7 +49,7 @@ export async function runAgent(agentId, inputMessage = "", opts = {}) {
     sessionNamespace,
   });
   const commandExecutor = new CommandExecutor(agentWorkingDir, []);
-  const conversationManager = null; // À créer si nécessaire, ou utiliser directement l'API
+  const conversationManager = null; // To create if necessary, or use the API directly
   
   let currentApiAbortController = null;
   let interrupted = false;
@@ -107,7 +107,7 @@ export async function runAgent(agentId, inputMessage = "", opts = {}) {
     `${basePrefix}🚀 Agent "${agentId}" instantiated (depth ${depth})\n`,
   );
 
-  // Créer une conversation manager simple pour ExecutionLoop
+  // Create a simple conversation manager for ExecutionLoop
   const simpleConversationManager = {
     checkConversationSize: () => "normal",
     compactConversationWithAI: async () => false,
@@ -140,7 +140,7 @@ export async function runAgent(agentId, inputMessage = "", opts = {}) {
       agentId,
       depth,
       onAgentDelegation: async (targetAgentId, message) => {
-        // Délégation à un autre agent
+        // Delegation to another agent
         await runAgent(targetAgentId, message, {
           configPath: resolvedConfigPath,
           depth: depth + 1,
