@@ -260,7 +260,7 @@ export class ExecutionLoop {
 
         // Check if the response indicates the end of execution
         const trimmed = response.trim();
-        if (/^(>>\s*)?(exit|pause|done)$/i.test(trimmed)) {
+        if (/^(>>\s*)?(pause|exit|done)$/i.test(trimmed)) {
           if (agentId) {
             process.stdout.write(`${basePrefix}🏁 Agent "${agentId}" finished.\n`);
           }

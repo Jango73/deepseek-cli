@@ -36,7 +36,8 @@ export class CommandExecutor {
 
       if (
         trimmedCommand.toLowerCase() === "pause" ||
-        trimmedCommand.toLowerCase() === "exit"
+        trimmedCommand.toLowerCase() === "exit" ||
+        trimmedCommand.toLowerCase() === "done"
       ) {
         resolve({
           success: true,

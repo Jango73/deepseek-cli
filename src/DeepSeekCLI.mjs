@@ -637,8 +637,9 @@ Interruption:
 
   async startInteractiveSession() {
     ConsoleOutput.info(`📁 Working directory: ${this.workingDirectory}`);
-    ConsoleOutput.info("Press ESC at any time to interrupt current task");
     ConsoleOutput.info(`🧠 Active agent: ${this.currentAgentId}`);
+    ConsoleOutput.info(`ℹ Type /help to see a list of commands`);
+    ConsoleOutput.info("ℹ Press ESC at any time to interrupt current task");
 
     try {
       while (true) {
