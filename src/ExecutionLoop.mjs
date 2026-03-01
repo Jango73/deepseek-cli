@@ -195,6 +195,10 @@ export class ExecutionLoop {
             );
             executedSomething = true;
 
+            if (result.paused) {
+              shouldBreak = true;
+            }
+
             if (result.error === "COMMAND_TOO_LONG") {
               const maxLines =
                 this.commandExecutor.constructor?.MAX_COMMAND_LINES || 20;
@@ -255,16 +259,6 @@ export class ExecutionLoop {
         }
 
         if (shouldBreak) {
-          break;
-        }
-
-        // Check if the response indicates the end of execution
-        const trimmed = response.trim();
-        if (/^(>>\s*)?(pause|exit|done)$/i.test(trimmed)) {
-          if (agentId) {
-            process.stdout.write(`${basePrefix}🏁 Agent "${agentId}" finished.\n`);
-          }
-          shouldBreak = true;
           break;
         }
 
