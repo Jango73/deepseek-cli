@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { ConsoleOutput } from "./ConsoleOutput.mjs";
 import { tokenizeShellCommand } from "./ShellTokenizer.mjs";
+import { parseInternalCommand as parseInternalCommandExternal, executeInternalCommand as executeInternalCommandExternal } from "./InternalCommandExecutor.mjs";
 
 export class CommandExecutor {
   static MAX_COMMAND_LINES = 20;
@@ -345,7 +346,18 @@ export class CommandExecutor {
     return false;
   }
 
+  isInternalCommand(commandText) {
+    const firstWord = commandText.trim().split(/\s+/)[0].toLowerCase();
+    return ["read", "delete", "write", "replace", "file-size"].includes(firstWord);
+  }
 
+  parseInternalCommand(commandText) {
+    return parseInternalCommandExternal(commandText);
+  }
+
+  executeInternalCommand(commandObj) {
+    return executeInternalCommandExternal(commandObj, this.workingDirectory);
+  }
 
   parseAIResponse(response) {
     const actions = [];
@@ -422,28 +434,51 @@ export class CommandExecutor {
 
       const commandText = response.substring(start + 3, end).trim();
       if (commandText) {
-        actions.push({
-          type: "shell",
-          content: commandText,
-          commandCategory: this.classifyCommand(commandText),
-          commandTarget: this.extractCommandTarget(commandText)
-        });
+        if (this.isInternalCommand(commandText)) {
+          const parsed = this.parseInternalCommand(commandText);
+          if (parsed.error) {
+            actions.push({
+              type: "comment",
+              content: `❌ Invalid internal command: ${parsed.error}`
+            });
+          } else {
+            actions.push({
+              type: "internal",
+              content: commandText,
+              commandObj: parsed
+            });
+          }
+        } else {
+          actions.push({
+            type: "shell",
+            content: commandText,
+            commandCategory: this.classifyCommand(commandText),
+            commandTarget: this.extractCommandTarget(commandText)
+          });
+        }
       }
       cursor = end + 3;
     }
 
     const commands = actions
-      .filter((action) => action.type === "shell")
+      .filter((action) => action.type === "shell" || action.type === "internal")
       .map((action) => action.content);
 
     let type = "comment";
     let commandCategory = null;
     let commandTarget = "";
 
-    if (commands.length > 0) {
+    const commandActions = actions.filter((action) => action.type === "shell" || action.type === "internal");
+    if (commandActions.length > 0) {
       type = "command";
-      commandCategory = this.classifyCommand(commands[0]);
-      commandTarget = this.extractCommandTarget(commands[0]);
+      const firstAction = commandActions[0];
+      if (firstAction.type === "internal") {
+        commandCategory = "internal";
+        commandTarget = firstAction.commandObj?.filePath || "";
+      } else {
+        commandCategory = this.classifyCommand(firstAction.content);
+        commandTarget = this.extractCommandTarget(firstAction.content);
+      }
     } else if (actions.some((action) => action.type === "agent")) {
       type = "agent";
     }
