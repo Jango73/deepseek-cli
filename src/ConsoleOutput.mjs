@@ -1,20 +1,25 @@
 import chalk from "chalk";
+import { logger } from "./Logger.mjs";
 
 export class ConsoleOutput {
-  static info(message) {
+  static info(message, ...args) {
     console.log(`${message}`);
+    logger.info(message + (args.length > 0 ? ' ' + args.join(' ') : ''));
   }
 
-  static success(message) {
+  static success(message, ...args) {
     console.log(`✅ ${message}`);
+    logger.success(message + (args.length > 0 ? ' ' + args.join(' ') : ''));
   }
 
-  static error(message) {
+  static error(message, ...args) {
     console.error(`❌ ${message}`);
+    logger.error(message + (args.length > 0 ? ' ' + args.join(' ') : ''));
   }
 
-  static warning(message) {
+  static warning(message, ...args) {
     console.warn(`⚠️  ${message}`);
+    logger.warn(message + (args.length > 0 ? ' ' + args.join(' ') : ''));
   }
 
   static header(title) {
@@ -65,6 +70,7 @@ export class ConsoleOutput {
           `│ ${lineStr}${" ".repeat(Math.max(0, blockWidth - lineStr.length))} │`,
         ),
       );
+      logger.info(`    ${lineStr}`);
     }
 
     if (hasMoreLines) {
