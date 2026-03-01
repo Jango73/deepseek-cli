@@ -2,6 +2,7 @@ import { execFile } from "child_process";
 import fs from "fs";
 import path from "path";
 import { ConsoleOutput } from "./ConsoleOutput.mjs";
+import { tokenizeShellCommand } from "./ShellTokenizer.mjs";
 
 export class CommandExecutor {
   static MAX_COMMAND_LINES = 20;
@@ -194,6 +195,158 @@ export class CommandExecutor {
     }
   }
 
+  classifyCommand(command) {
+    const cmd = command.toLowerCase().trim();
+
+    // Commandes d'exploration
+    const explorationPatterns = [
+      /^ls\b/, /^find\b/, /^grep\b/, /^cat\b/, /^head\b/, /^tail\b/,
+      /^file\b/, /^stat\b/, /^wc\b/, /^pwd\b/, /^which\b/, /^type\b/,
+      /^env\b/, /^echo\b/, /^sed\s+-n/, /^sed\s+.*p$/, /^awk\b/, /^cut\b/,
+      /^sort\b/, /^uniq\b/, /^tr\b/, /^diff\b/, /^cmp\b/, /^comm\b/,
+      /^rg\b/, /^ag\b/, /^ack\b/, /^git\s+log/, /^git\s+show/, /^git\s+diff/,
+      /^git\s+status/, /^npm\s+list/, /^npm\s+view/, /^npm\s+info/,
+    ];
+
+    // Commandes d'édition (sed avec modification, mv, cp, rm, etc.)
+    const editionPatterns = [
+      /^sed\s+.*[^p]$/, /^sed\s+-i/, /^mv\b/, /^cp\b/, /^rm\b/, /^mkdir\b/,
+      /^rmdir\b/, /^touch\b/, /^chmod\b/, /^chown\b/, /^chgrp\b/, /^ln\b/,
+      /^git\s+add/, /^git\s+commit/, /^git\s+push/, /^git\s+pull/, /^git\s+merge/,
+      /^git\s+rebase/, /^git\s+reset/, /^git\s+checkout/, /^git\s+branch\s+-c/,
+      /^git\s+tag\s+-a/, /^npm\s+install/, /^npm\s+uninstall/, /^npm\s+update/,
+      /^npm\s+init/, /^npm\s+publish/,
+    ];
+
+    for (const pattern of explorationPatterns) {
+      if (pattern.test(cmd)) {
+        return "exploration";
+      }
+    }
+
+    for (const pattern of editionPatterns) {
+      if (pattern.test(cmd)) {
+        return "edition";
+      }
+    }
+
+    return "other";
+  }
+
+  extractCommandTarget(command) {
+    const tokens = tokenizeShellCommand(command);
+    if (tokens.length === 0) {
+      return "";
+    }
+
+    // Special handling for cd (not classified as exploration/edition)
+    if (tokens[0].toLowerCase() === "cd") {
+      let i = 1;
+      while (i < tokens.length && tokens[i].startsWith("-")) {
+        if (this._flagExpectsArgument(tokens[i]) && i + 1 < tokens.length && !tokens[i + 1].startsWith("-")) {
+          i++; // skip flag argument
+        }
+        i++;
+      }
+      if (i < tokens.length) {
+        return tokens[i];
+      }
+      return "";
+    }
+
+    // Only extract target for commands classified as exploration or edition
+    const category = this.classifyCommand(command);
+    if (category === "other") {
+      return "";
+    }
+
+    // Determine command name (with possible subcommand for git/npm)
+    let commandName = tokens[0].toLowerCase();
+    let skip = 1;
+    if (commandName === "git" || commandName === "npm") {
+      if (tokens.length > 1) {
+        commandName = `${commandName} ${tokens[1].toLowerCase()}`;
+        skip = 2;
+      }
+    }
+
+    // Commands that have no file/directory target
+    const noTargetCommands = new Set([
+      "echo", "pwd", "env", "which", "type",
+      "git status", "git log", "git show", "git diff", "git commit",
+      "git push", "git pull", "git merge", "git rebase", "git reset",
+      "git checkout", "git tag", "git branch -c", "git tag -a",
+      "npm list", "npm view", "npm info", "npm install", "npm uninstall",
+      "npm update", "npm init", "npm publish"
+    ]);
+    if (noTargetCommands.has(commandName) || noTargetCommands.has(tokens[0].toLowerCase())) {
+      return "";
+    }
+
+    // Skip command tokens
+    let i = skip;
+    // Helper to skip flags and their arguments
+    while (i < tokens.length && tokens[i].startsWith("-")) {
+      if (this._flagExpectsArgument(tokens[i]) && i + 1 < tokens.length && !tokens[i + 1].startsWith("-")) {
+        i++; // skip flag argument
+      }
+      i++;
+    }
+
+    // After flags, determine target based on command
+    // Commands where the first non‑flag token is a pattern/script, not a target
+    const skipPatternCommands = new Set(["grep", "sed", "awk"]);
+    if (skipPatternCommands.has(tokens[0].toLowerCase())) {
+      // Skip pattern/script token
+      if (i < tokens.length) {
+        i++;
+      }
+    }
+
+    // Now look for the target
+    for (; i < tokens.length; i++) {
+      const token = tokens[i];
+      // Skip shell redirects and their arguments
+      if (token === ">" || token === ">>" || token === "<") {
+        i++; // skip the file argument
+        continue;
+      }
+      // Stop at command separators
+      if (token === "|" || token === ";" || token === "&" || token === "&&" || token === "||") {
+        break;
+      }
+      // Found a potential file/directory target
+      return token;
+    }
+
+    return "";
+  }
+
+  _flagExpectsArgument(flag) {
+    // Flags that already include an argument via '=' don't need another
+    if (flag.includes("=")) {
+      return false;
+    }
+    // Known flags that take an argument
+    const argumentFlags = new Set([
+      "-m", "-c", "-o", "-O", "-C", "-I", "-L", "-t", "-d", "-e", "-f",
+      "--message", "--output", "--directory", "--file", "--commit", "--tree",
+      "--author", "--date", "--format", "--sort", "--filter", "--contains"
+    ]);
+    if (argumentFlags.has(flag)) {
+      return true;
+    }
+    // Double-dash flags generally expect an argument (simplification)
+    if (flag.startsWith("--")) {
+      return true;
+    }
+    // Single hyphen with a single letter - assume NO argument unless in set
+    // Combined short flags (-la, -rf) do not expect an argument
+    return false;
+  }
+
+
+
   parseAIResponse(response) {
     const actions = [];
     const agentLineRegex = /^agent\s+(\w+)\s*:?\s*(.*)$/i;
@@ -269,7 +422,12 @@ export class CommandExecutor {
 
       const commandText = response.substring(start + 3, end).trim();
       if (commandText) {
-        actions.push({ type: "shell", content: commandText });
+        actions.push({
+          type: "shell",
+          content: commandText,
+          commandCategory: this.classifyCommand(commandText),
+          commandTarget: this.extractCommandTarget(commandText)
+        });
       }
       cursor = end + 3;
     }
@@ -279,14 +437,21 @@ export class CommandExecutor {
       .map((action) => action.content);
 
     let type = "comment";
+    let commandCategory = null;
+    let commandTarget = "";
+
     if (commands.length > 0) {
       type = "command";
+      commandCategory = this.classifyCommand(commands[0]);
+      commandTarget = this.extractCommandTarget(commands[0]);
     } else if (actions.some((action) => action.type === "agent")) {
       type = "agent";
     }
 
     return {
       type,
+      commandCategory,
+      commandTarget,
       command: commands[0] || null,
       commands,
       actions,

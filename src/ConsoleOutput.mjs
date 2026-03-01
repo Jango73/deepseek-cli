@@ -9,7 +9,7 @@ export class ConsoleOutput {
 
   static success(message, ...args) {
     console.log(`✅ ${message}`);
-    logger.success(message + (args.length > 0 ? ' ' + args.join(' ') : ''));
+    logger.info(message + (args.length > 0 ? ' ' + args.join(' ') : ''));
   }
 
   static error(message, ...args) {

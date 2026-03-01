@@ -183,11 +183,15 @@ export class ExecutionLoop {
             const commandLines = action.content.split("\n");
 
             if (agentId) {
-              // Affichage pour AgentRunner
               ConsoleOutput.printBlock("Command", commandLines);
             } else {
-              // Affichage pour TaskExecutor
-              ConsoleOutput.printBlock("COMMAND", commandLines);
+              if (action.commandCategory === "exploration") {
+                ConsoleOutput.info(`🔍 Exploration: ${action.commandTarget}`);
+              } else if (action.commandCategory === "edition") {
+                ConsoleOutput.info(`✏️ Edition: ${action.commandTarget}`);
+              } else {
+                ConsoleOutput.printBlock("COMMAND", commandLines);
+              }
             }
 
             const result = await this.commandExecutor.executeCommand(
@@ -246,7 +250,13 @@ export class ExecutionLoop {
             if (agentId) {
               ConsoleOutput.printBlock(outcome, outputLines);
             } else {
-              ConsoleOutput.printBlock(outcome, outputLines);
+              if (action.commandCategory === "exploration" || action.commandCategory === "edition") {
+                if (!result.success) {
+                  ConsoleOutput.error("Command failed");
+                }
+              } else {
+                ConsoleOutput.printBlock(outcome, outputLines);
+              }
             }
 
             lastSummaryPrompt = this.commandExecutor.createSummaryPrompt(
