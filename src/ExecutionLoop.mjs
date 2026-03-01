@@ -179,7 +179,68 @@ export class ExecutionLoop {
             continue;
           }
 
-          if (action.type === "shell") {
+          if (action.type === "internal") {
+            const commandLines = action.content.split("\n");
+            if (agentId) {
+              ConsoleOutput.printBlock("Command", commandLines);
+            } else {
+              if (action.commandCategory === "exploration") {
+                ConsoleOutput.info(`🔍 Explore ${action.commandTarget}`);
+              } else if (action.commandCategory === "edition") {
+                ConsoleOutput.info(`✏️ Edit ${action.commandTarget}`);
+              } else {
+                ConsoleOutput.printBlock("COMMAND", commandLines);
+              }
+            }
+
+            const result = await this.commandExecutor.executeInternalCommand(action.commandObj);
+            executedSomething = true;
+
+            if (result.paused) {
+              shouldBreak = true;
+              break;
+            }
+
+            if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted) || result.interrupted) {
+              if (agentId) {
+                process.stdout.write(`${basePrefix}🛑 Interruption confirmed - stopping task...\n`);
+              } else {
+                ConsoleOutput.info("🛑 Interruption confirmed - stopping task...");
+              }
+              shouldBreak = true;
+              break;
+            }
+
+            this.sessionManager.addHistoryEntry({
+              command: action.content,
+              success: result.success,
+              output: result.output,
+            });
+
+            const outputLines = (result.output || "No output").split("\n");
+            const outcome = result.success ? "OUTPUT (SUCCESS)" : "OUTPUT (FAILURE)";
+            if (agentId) {
+              ConsoleOutput.printBlock(outcome, outputLines);
+            } else {
+              if (action.commandCategory === "exploration" || action.commandCategory === "edition") {
+                if (!result.success) {
+                  ConsoleOutput.error("Command failed");
+                }
+              } else {
+                ConsoleOutput.printBlock(outcome, outputLines);
+              }
+            }
+
+            lastSummaryPrompt = this.commandExecutor.createSummaryPrompt(
+              action.content,
+              result.success,
+              result.output,
+              result.error,
+            );
+            continue;
+          }
+
+          else if (action.type === "shell") {
             const trimmedCmd = action.content.trim().toLowerCase();
             const isPauseCommand = trimmedCmd === "pause" || trimmedCmd === "exit" || trimmedCmd === "done";
             
@@ -204,8 +265,19 @@ export class ExecutionLoop {
             );
             executedSomething = true;
 
+            if (isPauseCommand) {
+              if (agentId) {
+                process.stdout.write(`${basePrefix}Done\n`);
+              } else {
+                ConsoleOutput.info("Done");
+              }
+              shouldBreak = true;
+              break;
+            }
+
             if (result.paused) {
               shouldBreak = true;
+              break;
             }
 
             if (result.error === "COMMAND_TOO_LONG") {
@@ -259,52 +331,7 @@ export class ExecutionLoop {
                 if (!result.success) {
                   ConsoleOutput.error("Command failed");
           }
-          if (action.type === "internal") {
-            const commandLines = action.content.split("\n");
-            if (agentId) {
-              ConsoleOutput.printBlock("Internal Command", commandLines);
-            } else {
-              ConsoleOutput.info(`📄 Internal: ${action.commandObj?.filePath || "unknown"}`);
-            }
 
-            const result = await this.commandExecutor.executeInternalCommand(action.commandObj);
-            executedSomething = true;
-
-            if (result.paused) {
-              shouldBreak = true;
-            }
-
-            if (this.isInterrupted || (cliInstance && cliInstance.isInterrupted) || result.interrupted) {
-              if (agentId) {
-                process.stdout.write(`${basePrefix}🛑 Interruption confirmed - stopping task...\n`);
-              } else {
-                ConsoleOutput.info("🛑 Interruption confirmed - stopping task...");
-              }
-              shouldBreak = true;
-              break;
-            }
-
-            this.sessionManager.addHistoryEntry({
-              command: action.content,
-              success: result.success,
-              output: result.output,
-            });
-
-            const outputLines = (result.output || "No output").split("\n");
-            const outcome = result.success ? "OUTPUT (SUCCESS)" : "OUTPUT (FAILURE)";
-            if (agentId) {
-              ConsoleOutput.printBlock(outcome, outputLines);
-            } else {
-              ConsoleOutput.printBlock(outcome, outputLines);
-            }
-
-            lastSummaryPrompt = this.commandExecutor.createSummaryPrompt(
-              action.content,
-              result.success,
-              result.output,
-              result.error,
-            );
-          }
               } else {
                 ConsoleOutput.printBlock(outcome, outputLines);
               }

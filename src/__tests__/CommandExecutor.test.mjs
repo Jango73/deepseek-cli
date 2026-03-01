@@ -185,6 +185,13 @@ describe("CommandExecutor", () => {
       expect(result.success).toBe(true);
       expect(result.output).toBe("content line 1\ncontent line 2");
     });
+
+    test("pause command returns Done and paused flag", async () => {
+      const result = await executor.executeCommand("pause");
+      expect(result.success).toBe(true);
+      expect(result.output).toBe("Done");
+      expect(result.paused).toBe(true);
+    });
   });
 
   describe("AI response parsing and execution", () => {

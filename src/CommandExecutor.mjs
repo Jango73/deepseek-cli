@@ -43,7 +43,7 @@ export class CommandExecutor {
       ) {
         resolve({
           success: true,
-          output: "PAUSE: Waiting for user action. Continue when ready.",
+          output: "Done",
           paused: true,
         });
         return;
@@ -232,6 +232,22 @@ export class CommandExecutor {
     }
 
     return "other";
+  }
+
+  classifyInternalCommandType(commandObj) {
+    if (!commandObj || !commandObj.type) return "other";
+    const type = commandObj.type.toLowerCase();
+    if (type === "read" || type === "file-size") {
+      return "exploration";
+    } else if (type === "write" || type === "replace" || type === "delete") {
+      return "edition";
+    }
+    return "other";
+  }
+
+  extractInternalCommandTarget(commandObj) {
+    if (!commandObj || !commandObj.filePath) return "";
+    return commandObj.filePath;
   }
 
   extractCommandTarget(command) {
@@ -445,7 +461,9 @@ export class CommandExecutor {
             actions.push({
               type: "internal",
               content: commandText,
-              commandObj: parsed
+              commandObj: parsed,
+              commandCategory: this.classifyInternalCommandType(parsed),
+              commandTarget: this.extractInternalCommandTarget(parsed)
             });
           }
         } else {
@@ -473,8 +491,8 @@ export class CommandExecutor {
       type = "command";
       const firstAction = commandActions[0];
       if (firstAction.type === "internal") {
-        commandCategory = "internal";
-        commandTarget = firstAction.commandObj?.filePath || "";
+        commandCategory = firstAction.commandCategory || "other";
+        commandTarget = firstAction.commandTarget || "";
       } else {
         commandCategory = this.classifyCommand(firstAction.content);
         commandTarget = this.extractCommandTarget(firstAction.content);

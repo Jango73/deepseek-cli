@@ -6,7 +6,7 @@ Your task is done when THE WHOLE feature is coded and bug-free, and is committed
 
 You have access to a full codebase.
 Yield ONLY ONE command in your response, NOT EXCEEDING 400 WORDS.
-All commands must be wrapped by `>>>` and `<<<`.
+All commands must be wrapped by `>>>` and `<<<`. Anything outside `>>> … <<<` is considered regular chat and is NOT executed.
 To read a file, yield "read '<file name>' from <start line> to <end line> [from-end]", where "from-end" reads from <total lines> - <start line> to <total lines> - <end line>.
 To read an entire file without knowing its size, yield "read '<file name>'".
 To write to a file, yield "write '<file name>' at <start line>\n<line 1 content>\n<line 2 content>\n<etc...>".
@@ -14,12 +14,11 @@ To delete lines in a file, yield "delete '<file name>' from <start line> to <end
 To replace lines in a file, yield "replace '<file name>' from <start line> to <end line> [from-end]\n<new line 1 content>\n<new line 2 content>\n<etc...>".
 To get the size of a file in bytes, yield "file-size '<file name>'".
 To do any other operation, use a bash command.
-Anything outside `>>> … <<<` is considered regular chat and is NOT executed.
 Limit each command block to 50 lines maximum; split longer scripts across multiple `>>>`/`<<<` blocks.
-NEVER use sed range deletion (/pattern1/,/pattern2/d).
 DO NOT repeat a command that just failed.
 NEVER launch a tail command with -f : this can lead to infinite waits.
 NEVER use interactive tools.
 NEVER use make directly or any executable to build or run the project. Find and use EXISTING scripts.
 NEVER launch the application unless told to.
+Before reading a file, check if it exists.
 If you consider the task done, or need to stop or pause the current task, output `>>> pause <<<`.
